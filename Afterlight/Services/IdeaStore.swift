@@ -173,6 +173,16 @@ final class IdeaStore: ObservableObject {
         accounts[idx] = acc
         saveAccounts()
     }
+
+    /// Update the current user's profile picture (aura) variant. Use after onboarding to change aura.
+    func updateAccountAura(auraVariant: Int) {
+        guard let id = currentUserId, let idx = accounts.firstIndex(where: { $0.id == id }) else { return }
+        var acc = accounts[idx]
+        acc.auraVariant = auraVariant
+        acc.auraPaletteIndex = nil
+        accounts[idx] = acc
+        saveAccounts()
+    }
     
     func loadCategories() {
         guard FileManager.default.fileExists(atPath: categoriesURL.path),
@@ -250,16 +260,22 @@ final class IdeaStore: ObservableObject {
         saveIdeas()
     }
     
-    func toggleLikeContribution(ideaId: UUID, contributionId: UUID) {
+    /// Toggle or set reaction. If user already has this reaction type, remove it; otherwise set it (replacing any previous reaction from this user).
+    func toggleReaction(ideaId: UUID, contributionId: UUID, type: String) {
         guard let userId = currentUserId,
               let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
               let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }) else { return }
         var idea = ideas[ideaIndex]
         var contrib = idea.contributions[contribIndex]
-        if contrib.likedByAccountIds.contains(userId) {
-            contrib.likedByAccountIds.removeAll { $0 == userId }
+        let existingIndex = contrib.reactions.firstIndex { $0.accountId == userId }
+        if let idx = existingIndex {
+            if contrib.reactions[idx].type == type {
+                contrib.reactions.remove(at: idx)
+            } else {
+                contrib.reactions[idx] = Reaction(accountId: userId, type: type)
+            }
         } else {
-            contrib.likedByAccountIds.append(userId)
+            contrib.reactions.append(Reaction(accountId: userId, type: type))
         }
         idea.contributions[contribIndex] = contrib
         ideas[ideaIndex] = idea
@@ -279,9 +295,14 @@ final class IdeaStore: ObservableObject {
         saveIdeas()
     }
     
+    /// The current user's reaction type on this contribution, if any.
+    func currentUserReactionType(for contribution: Contribution) -> String? {
+        guard let userId = currentUserId else { return nil }
+        return contribution.reactions.first { $0.accountId == userId }?.type
+    }
+    
     func didCurrentUserLike(contribution: Contribution) -> Bool {
-        guard let userId = currentUserId else { return false }
-        return contribution.likedByAccountIds.contains(userId)
+        return currentUserReactionType(for: contribution) == ReactionType.heart.rawValue
     }
     
     func updateIdeaContent(ideaId: UUID, newContent: String) {

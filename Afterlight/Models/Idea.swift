@@ -77,13 +77,62 @@ struct Comment: Codable, Identifiable {
     }
 }
 
+/// A single reaction from a user (emoji type or sticker id).
+struct Reaction: Codable, Identifiable {
+    let id: UUID
+    let accountId: UUID
+    /// One of: "heart", "fire", "laugh", "thumbsUp", "wow", "sad", or "sticker:xyz" for stickers.
+    let type: String
+    
+    init(id: UUID = UUID(), accountId: UUID, type: String) {
+        self.id = id
+        self.accountId = accountId
+        self.type = type
+    }
+}
+
+enum ReactionType: String, CaseIterable {
+    case heart
+    case fire
+    case laugh
+    case thumbsUp
+    case wow
+    case sad
+    
+    var symbolName: String {
+        switch self {
+        case .heart: return "heart.fill"
+        case .fire: return "flame.fill"
+        case .laugh: return "face.smiling.fill"
+        case .thumbsUp: return "hand.thumbsup.fill"
+        case .wow: return "star.fill"
+        case .sad: return "cloud.rain.fill"
+        }
+    }
+}
+
+/// Sticker options for the reaction sticker picker.
+enum ReactionStickers {
+    static let all: [(id: String, emoji: String)] = [
+        ("party", "🎉"),
+        ("star", "⭐️"),
+        ("lightbulb", "💡"),
+        ("sparkles", "✨"),
+        ("clap", "👏"),
+        ("rocket", "🚀"),
+        ("flame", "🔥"),
+        ("heart", "❤️"),
+    ]
+}
+
 struct Contribution: Codable, Identifiable {
     let id: UUID
     let authorDisplayName: String
     let content: String
     let createdAt: Date
     var isPublic: Bool
-    var likedByAccountIds: [UUID]
+    var likedByAccountIds: [UUID] // legacy; kept for decode migration
+    var reactions: [Reaction]
     var comments: [Comment]
     
     init(
@@ -93,6 +142,7 @@ struct Contribution: Codable, Identifiable {
         createdAt: Date = Date(),
         isPublic: Bool = true,
         likedByAccountIds: [UUID] = [],
+        reactions: [Reaction] = [],
         comments: [Comment] = []
     ) {
         self.id = id
@@ -101,13 +151,19 @@ struct Contribution: Codable, Identifiable {
         self.createdAt = createdAt
         self.isPublic = isPublic
         self.likedByAccountIds = likedByAccountIds
+        self.reactions = reactions
         self.comments = comments
     }
     
-    var likeCount: Int { likedByAccountIds.count }
+    func count(for type: String) -> Int {
+        reactions.filter { $0.type == type }.count
+    }
+    
+    var likeCount: Int { count(for: ReactionType.heart.rawValue) }
+    var totalReactionCount: Int { reactions.count }
     
     enum CodingKeys: String, CodingKey {
-        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, comments
+        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, reactions, comments
     }
     
     init(from decoder: Decoder) throws {
@@ -117,7 +173,13 @@ struct Contribution: Codable, Identifiable {
         content = try c.decode(String.self, forKey: .content)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         isPublic = try c.decodeIfPresent(Bool.self, forKey: .isPublic) ?? true
-        likedByAccountIds = try c.decodeIfPresent([UUID].self, forKey: .likedByAccountIds) ?? []
+        let legacyLikes = try c.decodeIfPresent([UUID].self, forKey: .likedByAccountIds) ?? []
+        var decodedReactions = try c.decodeIfPresent([Reaction].self, forKey: .reactions) ?? []
+        if !legacyLikes.isEmpty && decodedReactions.isEmpty {
+            decodedReactions = legacyLikes.map { Reaction(accountId: $0, type: ReactionType.heart.rawValue) }
+        }
+        likedByAccountIds = []
+        reactions = decodedReactions
         comments = try c.decodeIfPresent([Comment].self, forKey: .comments) ?? []
     }
     
@@ -129,6 +191,7 @@ struct Contribution: Codable, Identifiable {
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(isPublic, forKey: .isPublic)
         try c.encode(likedByAccountIds, forKey: .likedByAccountIds)
+        try c.encode(reactions, forKey: .reactions)
         try c.encode(comments, forKey: .comments)
     }
 }
@@ -192,12 +255,25 @@ struct Idea: Codable, Identifiable {
         try c.encode(attachments, forKey: .attachments)
     }
     
-    var participantInitials: [String] {
-        var set = Set([String(authorDisplayName.prefix(1)).uppercased()])
-        for c in contributions {
-            set.insert(String(c.authorDisplayName.prefix(1)).uppercased())
+    /// Participant display names, author first, then contributors (unique, order preserved). Use for avatar list.
+    var participantDisplayNames: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        if !seen.contains(authorDisplayName) {
+            seen.insert(authorDisplayName)
+            out.append(authorDisplayName)
         }
-        return Array(set).sorted()
+        for c in contributions {
+            if !seen.contains(c.authorDisplayName) {
+                seen.insert(c.authorDisplayName)
+                out.append(c.authorDisplayName)
+            }
+        }
+        return out
+    }
+    
+    var participantInitials: [String] {
+        participantDisplayNames.map { String($0.prefix(1)).uppercased() }
     }
     
     var timeAgo: String {

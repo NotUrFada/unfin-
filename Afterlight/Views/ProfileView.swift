@@ -16,7 +16,8 @@ struct ProfileView: View {
     }
     
     @State private var profilePath = NavigationPath()
-    
+    @State private var showChangeAura = false
+
     var body: some View {
         NavigationStack(path: $profilePath) {
             ZStack(alignment: .bottomTrailing) {
@@ -41,6 +42,10 @@ struct ProfileView: View {
                     SettingsView()
                 }
             }
+        }
+        .sheet(isPresented: $showChangeAura) {
+            ChangeAuraView(initialVariant: store.currentAccount?.auraVariant ?? 0)
+                .environmentObject(store)
         }
         .onAppear {
             displayName = store.currentUserName
@@ -109,11 +114,23 @@ struct ProfileView: View {
                 .padding(.horizontal, 24)
             } else {
                 HStack(spacing: 14) {
-                    AuraAvatarView(
-                        size: 52,
-                        auraVariant: store.currentAccount?.auraVariant,
-                        legacyPaletteIndex: store.currentAccount?.auraPaletteIndex
-                    )
+                    Button {
+                        showChangeAura = true
+                    } label: {
+                        ZStack(alignment: .bottomTrailing) {
+                            AuraAvatarView(
+                                size: 52,
+                                auraVariant: store.currentAccount?.auraVariant,
+                                legacyPaletteIndex: store.currentAccount?.auraPaletteIndex
+                            )
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.white)
+                                .background(Circle().fill(Color(white: 0.2)))
+                                .offset(x: 4, y: 4)
+                        }
+                    }
+                    .buttonStyle(.plain)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(store.currentUserName)
                             .font(.system(size: 24, weight: .medium))

@@ -47,46 +47,29 @@ struct FeedView: View {
     }
     
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                HStack(spacing: 8) {
-                    Image("Logo")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 24, height: 24)
-                    Text("UNFIN")
-                        .font(.system(size: 14, weight: .semibold))
-                        .tracking(-0.5)
-                        .foregroundStyle(Color.white)
-                }
-                Spacer()
-                Text(store.currentUserName)
-                    .font(.system(size: 11, weight: .medium))
+        HStack {
+            HStack(spacing: 8) {
+                Image("Logo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
+                Text("UNFIN")
+                    .font(.system(size: 14, weight: .semibold))
+                    .tracking(-0.5)
                     .foregroundStyle(Color.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.2))
-                    .clipShape(Capsule())
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 56)
-            .padding(.bottom, 32)
-            
-            Text("Finish the story\nbefore dark.")
-                .font(.system(size: 32, weight: .medium))
-                .tracking(-0.03)
-                .lineSpacing(2)
+            Spacer()
+            Text(store.currentUserName)
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Color.white)
-                .shadow(color: Color.black.opacity(0.1), radius: 10, y: 2)
-                .padding(.horizontal, 24)
-            
-            Text("Collaborative creativity for the incomplete.")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(Color.white.opacity(0.95))
-                .padding(.horizontal, 24)
-                .padding(.top, 4)
-                .padding(.bottom, 32)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.2))
+                .clipShape(Capsule())
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 56)
+        .padding(.bottom, 16)
     }
     
     private var filterTabs: some View {

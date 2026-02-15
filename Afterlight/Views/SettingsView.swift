@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
     @State private var showAddCategory = false
+    @State private var showChangeAura = false
     @State private var newCategoryName = ""
     @State private var newCategoryVerb = "Complete"
     
@@ -23,12 +24,32 @@ struct SettingsView: View {
             
             List {
                 Section {
+                    Button {
+                        showChangeAura = true
+                    } label: {
+                        HStack(spacing: 14) {
+                            AuraAvatarView(
+                                size: 44,
+                                auraVariant: store.currentAccount?.auraVariant,
+                                legacyPaletteIndex: store.currentAccount?.auraPaletteIndex
+                            )
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Profile picture")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.white.opacity(0.8))
+                                Text("Tap to change")
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                    }
+                    .listRowBackground(Color.white.opacity(0.06))
+                    .foregroundStyle(.white)
                     HStack(spacing: 14) {
-                        AuraAvatarView(
-                            size: 44,
-                            auraVariant: store.currentAccount?.auraVariant,
-                            legacyPaletteIndex: store.currentAccount?.auraPaletteIndex
-                        )
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Display name")
                                 .font(.subheadline)
@@ -141,6 +162,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showAddCategory) {
             addCategorySheet
+        }
+        .sheet(isPresented: $showChangeAura) {
+            ChangeAuraView(initialVariant: store.currentAccount?.auraVariant ?? 0)
+                .environmentObject(store)
         }
     }
     

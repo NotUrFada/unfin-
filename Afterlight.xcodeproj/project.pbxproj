@@ -90,6 +90,10 @@
 			isa = PBXBuildFile;
 			fileRef = A1B2C3D50000001500000004;
 		};
+		A1B2C3D40000001600000004 = {
+			isa = PBXBuildFile;
+			fileRef = A1B2C3D50000001600000004;
+		};
 
 		A1B2C3D50000000100000004 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AfterlightApp.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000200000004 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Idea.swift; sourceTree = "<group>"; };
@@ -112,6 +116,7 @@
 		A1B2C3D50000001300000004 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001400000004 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001500000004 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuraAvatarView.swift; sourceTree = "<group>"; };
+		A1B2C3D50000001600000004 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeAuraView.swift; sourceTree = "<group>"; };
 
 		A1B2C3D60000000100000004 = {
 			isa = PBXGroup;
@@ -158,6 +163,7 @@
 				A1B2C3D50000001200000004,
 				A1B2C3D50000001300000004,
 				A1B2C3D50000001400000004,
+				A1B2C3D50000001600000004,
 				A1B2C3D70000000500000004,
 			);
 			path = Views;
@@ -244,6 +250,7 @@
 				A1B2C3D40000001300000004,
 				A1B2C3D40000001400000004,
 				A1B2C3D40000001500000004,
+				A1B2C3D40000001600000004,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			sourceTree = "<group>";

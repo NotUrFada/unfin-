@@ -182,7 +182,7 @@ struct IdeaDetailView: View {
     }
 }
 
-// MARK: - Completion row with like, share, comments
+// MARK: - Completion row with reactions, share, comments
 struct CompletionRowView: View {
     @EnvironmentObject var store: IdeaStore
     let ideaId: UUID
@@ -191,6 +191,7 @@ struct CompletionRowView: View {
     var onToggleComments: () -> Void
     var onSubmitComment: (String) -> Void
     @State private var commentDraft = ""
+    @State private var showStickerPicker = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -214,43 +215,46 @@ struct CompletionRowView: View {
             }
             
             if contribution.isPublic {
-                HStack(spacing: 16) {
-                    Button {
-                        store.toggleLikeContribution(ideaId: ideaId, contributionId: contribution.id)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: store.didCurrentUserLike(contribution: contribution) ? "heart.fill" : "heart")
-                                .foregroundStyle(store.didCurrentUserLike(contribution: contribution) ? .red : .white.opacity(0.8))
-                            if contribution.likeCount > 0 {
-                                Text("\(contribution.likeCount)")
-                                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 16) {
+                        reactionBar
+                        ShareLink(item: contribution.content) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        Button(action: onToggleComments) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "bubble.right")
+                                    .font(.system(size: 14))
                                     .foregroundStyle(.white.opacity(0.8))
+                                Text("Comment")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                if contribution.comments.count > 0 {
+                                    Text("(\(contribution.comments.count))")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.white.opacity(0.6))
+                                }
                             }
                         }
-                    }
-                    .buttonStyle(.plain)
-                    
-                    ShareLink(item: contribution.content) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
+                        .buttonStyle(.plain)
                     }
                     
-                    Button(action: onToggleComments) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "bubble.right")
-                                .foregroundStyle(.white.opacity(0.8))
-                            Text("\(contribution.comments.count)")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
+                    if !contribution.reactions.isEmpty {
+                        reactionSummaryRow
                     }
-                    .buttonStyle(.plain)
+                    if showStickerPicker {
+                        stickerPicker
+                    }
                 }
                 
                 if isCommentExpanded {
                     VStack(alignment: .leading, spacing: 8) {
+                        Text("Comments")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .padding(.bottom, 2)
                         ForEach(contribution.comments) { comment in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(comment.content)
@@ -292,6 +296,93 @@ struct CompletionRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var reactionBar: some View {
+        HStack(spacing: 12) {
+            ForEach(ReactionType.allCases, id: \.rawValue) { type in
+                reactionButton(type: type.rawValue, symbolName: type.symbolName)
+            }
+            Button {
+                showStickerPicker.toggle()
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "face.smiling.fill")
+                        .font(.system(size: 14))
+                }
+                .foregroundStyle(store.currentUserReactionType(for: contribution)?.hasPrefix("sticker:") == true ? Color.orange : .white.opacity(0.8))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    private func reactionButton(type: String, symbolName: String) -> some View {
+        let count = contribution.count(for: type)
+        let isSelected = store.currentUserReactionType(for: contribution) == type
+        return Button {
+            store.toggleReaction(ideaId: ideaId, contributionId: contribution.id, type: type)
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? (type == ReactionType.heart.rawValue ? Color.red : Color.orange) : .white.opacity(0.8))
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var reactionSummaryRow: some View {
+        let typesWithCount = ReactionType.allCases.filter { contribution.count(for: $0.rawValue) > 0 }
+        let stickerReactions = contribution.reactions.filter { $0.type.hasPrefix("sticker:") }
+        let stickerEmojiString = stickerReactions.compactMap { r -> String? in
+            let id = r.type.replacingOccurrences(of: "sticker:", with: "")
+            return ReactionStickers.all.first(where: { $0.id == id })?.emoji
+        }.prefix(3).joined()
+        return HStack(spacing: 8) {
+            ForEach(typesWithCount, id: \.rawValue) { type in
+                HStack(spacing: 4) {
+                    Image(systemName: type.symbolName)
+                        .font(.system(size: 12))
+                        .foregroundStyle(type == .heart ? .red : .white.opacity(0.9))
+                    Text("\(contribution.count(for: type.rawValue))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+            if !stickerReactions.isEmpty {
+                Text(stickerEmojiString)
+                    .font(.system(size: 14))
+                if stickerReactions.count > 1 {
+                    Text("×\(stickerReactions.count)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+    
+    private var stickerPicker: some View {
+        HStack(spacing: 12) {
+            ForEach(Array(ReactionStickers.all.enumerated()), id: \.offset) { _, sticker in
+                let stickerType = "sticker:\(sticker.id)"
+                Button {
+                    store.toggleReaction(ideaId: ideaId, contributionId: contribution.id, type: stickerType)
+                    showStickerPicker = false
+                } label: {
+                    Text(sticker.emoji)
+                        .font(.system(size: 28))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
     }
 }
 
