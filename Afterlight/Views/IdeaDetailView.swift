@@ -14,11 +14,19 @@ struct IdeaDetailView: View {
     @State private var completionText = ""
     @State private var completionIsPublic = true
     @State private var showSubmitted = false
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
     @State private var expandedCommentContributionId: UUID?
     @FocusState private var focusField: Bool
     
     private var ideaToShow: Idea? {
         store.idea(byId: ideaId)
+    }
+    
+    private var canDelete: Bool {
+        guard let idea = ideaToShow else { return false }
+        return idea.authorDisplayName == store.currentUserName
     }
     
     var body: some View {
@@ -35,12 +43,15 @@ struct IdeaDetailView: View {
         .toolbarBackground(Color(white: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .foregroundStyle(.white)
+            if canDelete {
+                ToolbarItem(placement: .destructiveAction) {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                            .foregroundStyle(.red.opacity(0.9))
+                    }
+                    .disabled(isDeleting)
                 }
             }
         }
@@ -51,6 +62,37 @@ struct IdeaDetailView: View {
             }
         } message: {
             Text("Your completion was added. Thanks for finishing the idea.")
+        }
+        .alert("Delete idea?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                performDelete()
+            }
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .alert("Couldn’t delete", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK") { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+    
+    private func performDelete() {
+        isDeleting = true
+        Task {
+            do {
+                try await store.deleteIdea(ideaId: ideaId)
+                await MainActor.run { dismiss() }
+            } catch {
+                await MainActor.run {
+                    deleteError = error.localizedDescription
+                }
+            }
+            await MainActor.run { isDeleting = false }
         }
     }
     
@@ -80,10 +122,8 @@ struct IdeaDetailView: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.92))
                             ForEach(idea.attachments) { att in
-                                AttachmentRowView(
-                                    attachment: att,
-                                    fileURL: store.fileURL(ideaId: idea.id, attachment: att)
-                                )
+                                AttachmentRowView(ideaId: idea.id, attachment: att)
+                                    .environmentObject(store)
                             }
                         }
                     }
@@ -387,14 +427,16 @@ struct CompletionRowView: View {
 }
 
 struct AttachmentRowView: View {
+    @EnvironmentObject var store: IdeaStore
+    let ideaId: UUID
     let attachment: Attachment
-    let fileURL: URL
     @State private var previewItem: IdentifiableURL?
+    @State private var resolvedURL: URL?
     
     var body: some View {
         Button {
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                previewItem = IdentifiableURL(url: fileURL)
+            if let url = resolvedURL {
+                previewItem = IdentifiableURL(url: url)
             }
         } label: {
             HStack(spacing: 12) {
@@ -418,6 +460,10 @@ struct AttachmentRowView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .disabled(resolvedURL == nil)
+        .task {
+            resolvedURL = await store.attachmentURL(ideaId: ideaId, attachment: attachment)
+        }
         .sheet(item: $previewItem) { item in
             QuickLookPreviewView(url: item.url)
         }

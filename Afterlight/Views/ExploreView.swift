@@ -25,7 +25,12 @@ struct ExploreView: View {
                 addButton
             }
             .navigationDestination(for: Category.self) { category in
-                CategoryFeedView(category: category, showCreateIdea: $showCreateIdea)
+                CategoryFeedView(category: category, showCreateIdea: $showCreateIdea) { ideaId in
+                    explorePath.append(ideaId)
+                }
+            }
+            .navigationDestination(for: UUID.self) { ideaId in
+                IdeaDetailView(ideaId: ideaId)
             }
         }
     }
@@ -63,7 +68,9 @@ struct ExploreView: View {
     private var categoryGrid: some View {
         VStack(spacing: 12) {
             ForEach(store.categories) { category in
-                NavigationLink(value: category) {
+                Button {
+                    explorePath.append(category)
+                } label: {
                     HStack {
                         Image(systemName: iconForCategory(category))
                             .font(.system(size: 22))
@@ -128,67 +135,53 @@ struct ExploreView: View {
 struct CategoryFeedView: View {
     let category: Category
     @Binding var showCreateIdea: Bool
+    var onSelectIdea: (UUID) -> Void
     @EnvironmentObject var store: IdeaStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var path = NavigationPath()
     
     private var ideas: [Idea] {
         store.ideas.filter { $0.categoryId == category.id }
     }
     
     var body: some View {
-        NavigationStack(path: $path) {
-            ZStack(alignment: .bottomTrailing) {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(ideas) { idea in
-                            IdeaCardView(idea: idea) {
-                                path.append(idea.id)
-                            }
-                        }
-                        if ideas.isEmpty {
-                            Text("No \(category.displayName.lowercased()) ideas yet. Tap + to add one.")
-                                .font(.system(size: 15))
-                                .foregroundStyle(Color.white.opacity(0.9))
-                                .padding(24)
-                                .frame(maxWidth: .infinity)
-                        }
-                        Color.clear.frame(height: 100)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                }
-                .background(BackgroundGradientView())
-                .navigationTitle(category.displayName)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(Color(white: 0.12), for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button { dismiss() } label: {
-                            Image(systemName: "chevron.left")
-                                .foregroundStyle(Color.white)
+        ZStack(alignment: .bottomTrailing) {
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(ideas) { idea in
+                        IdeaCardView(idea: idea) {
+                            onSelectIdea(idea.id)
                         }
                     }
+                    if ideas.isEmpty {
+                        Text("No \(category.displayName.lowercased()) ideas yet. Tap + to add one.")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.white.opacity(0.9))
+                            .padding(24)
+                            .frame(maxWidth: .infinity)
+                    }
+                    Color.clear.frame(height: 100)
                 }
-                .navigationDestination(for: UUID.self) { id in
-                    IdeaDetailView(ideaId: id)
-                }
-                
-                Button {
-                    showCreateIdea = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(Color(white: 0.1))
-                        .frame(width: 56, height: 56)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
-                }
-                .padding(.trailing, 24)
-                .padding(.bottom, 100)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
             }
+            .background(BackgroundGradientView())
+            .navigationTitle(category.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            
+            Button {
+                showCreateIdea = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(Color(white: 0.1))
+                    .frame(width: 56, height: 56)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
+            }
+            .padding(.trailing, 24)
+            .padding(.bottom, 100)
         }
     }
 }

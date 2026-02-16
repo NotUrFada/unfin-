@@ -143,6 +143,7 @@ struct AuraViewportView: View {
                 Color.white.opacity(0.3)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(height: height)
     }
 }

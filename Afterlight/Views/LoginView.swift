@@ -10,6 +10,7 @@ struct LoginView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var email = ""
     @State private var password = ""
+    @State private var isBusy = false
     @FocusState private var focusedField: Field?
     
     enum Field { case email, password }
@@ -67,11 +68,21 @@ struct LoginView: View {
                     }
                     
                     Button {
-                        if store.login(email: email, password: password) {
-                            dismiss()
+                        isBusy = true
+                        store.authError = nil
+                        Task {
+                            do {
+                                try await store.login(email: email, password: password)
+                                await MainActor.run { dismiss() }
+                            } catch {
+                                await MainActor.run {
+                                    store.authError = error.localizedDescription
+                                    isBusy = false
+                                }
+                            }
                         }
                     } label: {
-                        Text("Log In")
+                        Text(isBusy ? "Signing in…" : "Log In")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Color(white: 0.12))
                             .frame(maxWidth: .infinity)
@@ -80,6 +91,7 @@ struct LoginView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     .buttonStyle(.plain)
+                    .disabled(isBusy)
                     .padding(.top, 8)
                     
                     Spacer(minLength: 40)
@@ -90,12 +102,6 @@ struct LoginView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color(white: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Back") { dismiss() }
-                    .foregroundStyle(.white)
-            }
-        }
         .onAppear { store.authError = nil }
     }
 }

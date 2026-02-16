@@ -7,6 +7,7 @@ import SwiftUI
 
 @main
 struct UnfinApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var store = IdeaStore()
     
     var body: some Scene {
@@ -21,6 +22,7 @@ struct UnfinApp: App {
                 }
             }
             .environmentObject(store)
+            .task { await store.restoreSessionIfNeeded() }
         }
     }
 }

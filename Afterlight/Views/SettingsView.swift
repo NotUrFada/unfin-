@@ -47,7 +47,7 @@ struct SettingsView: View {
                                 .foregroundStyle(.white.opacity(0.5))
                         }
                     }
-                    .listRowBackground(Color.white.opacity(0.06))
+                    .listRowBackground(Color.white.opacity(0.08))
                     .foregroundStyle(.white)
                     HStack(spacing: 14) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -60,7 +60,7 @@ struct SettingsView: View {
                         }
                         Spacer()
                     }
-                    .listRowBackground(Color.white.opacity(0.06))
+                    .listRowBackground(Color.white.opacity(0.08))
                     .foregroundStyle(.white)
                     Button {
                         store.logout()
@@ -69,7 +69,7 @@ struct SettingsView: View {
                         Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
                             .foregroundStyle(.orange)
                     }
-                    .listRowBackground(Color.white.opacity(0.06))
+                    .listRowBackground(Color.white.opacity(0.08))
                 } header: {
                     Text("Account").foregroundStyle(.white.opacity(0.8))
                 }
@@ -80,12 +80,12 @@ struct SettingsView: View {
                     } label: {
                         Label("Delete my account", systemImage: "person.crop.circle.badge.minus")
                     }
-                    .listRowBackground(Color.white.opacity(0.06))
+                    .listRowBackground(Color.white.opacity(0.08))
                 } header: {
                     Text("Danger zone").foregroundStyle(.white.opacity(0.8))
                 } footer: {
                     Text("This will remove all ideas you’ve posted and reset your name. Ideas you’ve contributed to will keep your past display name.")
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(.white.opacity(0.5))
                 }
                 
                 Section {
@@ -96,7 +96,7 @@ struct SettingsView: View {
                                     .font(.body)
                                 Text("Action: \"\(cat.actionVerb)\"")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.white.opacity(0.5))
                             }
                             Spacer()
                             Button {
@@ -106,7 +106,7 @@ struct SettingsView: View {
                                     .foregroundStyle(.red)
                             }
                         }
-                        .listRowBackground(Color.white.opacity(0.06))
+                        .listRowBackground(Color.white.opacity(0.08))
                         .foregroundStyle(.white)
                     }
                     Button {
@@ -116,13 +116,13 @@ struct SettingsView: View {
                     } label: {
                         Label("Add category", systemImage: "plus.circle.fill")
                     }
-                    .listRowBackground(Color.white.opacity(0.06))
+                    .listRowBackground(Color.white.opacity(0.08))
                     .foregroundStyle(.white)
                 } header: {
                     Text("Categories").foregroundStyle(.white.opacity(0.8))
                 } footer: {
                     Text("Add custom categories for your ideas. Built-in categories can’t be removed.")
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(.white.opacity(0.5))
                 }
                 
                 Section {
@@ -130,9 +130,9 @@ struct SettingsView: View {
                         Text("Version")
                         Spacer()
                         Text("1.0")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white.opacity(0.5))
                     }
-                    .listRowBackground(Color.white.opacity(0.06))
+                    .listRowBackground(Color.white.opacity(0.08))
                     .foregroundStyle(.white)
                 } header: {
                     Text("About").foregroundStyle(.white.opacity(0.8))
@@ -175,9 +175,9 @@ struct SettingsView: View {
                 Color(white: 0.12).ignoresSafeArea()
                 Form {
                     TextField("Category name", text: $newCategoryName)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color(white: 0.1))
                     TextField("Action verb (e.g. Complete, Write)", text: $newCategoryVerb)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color(white: 0.1))
                 }
                 .scrollContentBackground(.hidden)
                 .onAppear { newCategoryVerb = "Complete" }

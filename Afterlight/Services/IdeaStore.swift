@@ -5,7 +5,6 @@
 
 import Foundation
 import SwiftUI
-import CryptoKit
 
 final class IdeaStore: ObservableObject {
     @Published var ideas: [Idea] = []
@@ -22,22 +21,17 @@ final class IdeaStore: ObservableObject {
     @Published var currentUserName: String {
         didSet { UserDefaults.standard.set(currentUserName, forKey: "currentUserName") }
     }
-    
     @Published var authError: String?
+    @Published var postError: String?
+    @Published private(set) var currentUserProfile: FirestoreUserProfile?
+    
+    private var ideasListener: SupabaseListenerRegistration?
+    private var categoriesListener: SupabaseListenerRegistration?
+    private var notificationsListener: SupabaseListenerRegistration?
     
     private let fileURL: URL = {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ideas.json")
-    }()
-    
-    private let categoriesURL: URL = {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("categories.json")
-    }()
-    
-    private let accountsURL: URL = {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("accounts.json")
     }()
     
     private let attachmentsBaseURL: URL = {
@@ -53,149 +47,215 @@ final class IdeaStore: ObservableObject {
         attachmentsDirectory(for: ideaId).appendingPathComponent(attachment.fileName)
     }
     
-    private(set) var accounts: [Account] = []
+    /// Returns local file URL if the file exists; otherwise fetches download URL from Supabase Storage.
+    func attachmentURL(ideaId: UUID, attachment: Attachment) async -> URL? {
+        let local = fileURL(ideaId: ideaId, attachment: attachment)
+        if FileManager.default.fileExists(atPath: local.path) { return local }
+        let path = "ideas/\(ideaId.uuidString)/\(attachment.fileName)"
+        return try? await SupabaseService.downloadURL(forStoragePath: path)
+    }
+    
+    @Published var notifications: [AppNotification] = []
     
     init() {
         let savedUserId = UserDefaults.standard.string(forKey: "currentUserId").flatMap { UUID(uuidString: $0) }
         self.currentUserId = savedUserId
         self.currentUserName = UserDefaults.standard.string(forKey: "currentUserName") ?? "Anonymous"
-        loadAccounts()
-        if let id = savedUserId, let acc = account(byId: id) {
-            self.currentUserName = acc.displayName
-        }
-        loadCategories()
-        if categories.isEmpty {
+        
+    }
+    
+    /// Call from the root view’s .task { await store.restoreSessionIfNeeded() } to restore session on launch.
+    @MainActor
+    func restoreSessionIfNeeded() async {
+        if await SupabaseService.currentSession != nil {
+            await handleSignedIn()
+        } else {
             categories = Category.defaultSystemCategories
-            saveCategories()
         }
-        loadIdeas()
-        if ideas.isEmpty {
-            seedSampleIdeas()
+    }
+    
+    @MainActor
+    private func handleSignedIn() async {
+        do {
+            guard let result = try await SupabaseService.fetchUserProfile() else { return }
+            currentUserId = result.appUserId
+            currentUserName = result.displayName
+            currentUserProfile = result.profile
+            startListeners()
+        } catch {
+            authError = error.localizedDescription
+        }
+    }
+    
+    private func handleSignedOut() {
+        ideasListener?.remove()
+        categoriesListener?.remove()
+        notificationsListener?.remove()
+        ideasListener = nil
+        categoriesListener = nil
+        notificationsListener = nil
+        ideas = []
+        categories = Category.defaultSystemCategories
+        notifications = []
+        currentUserId = nil
+        currentUserName = "Anonymous"
+        currentUserProfile = nil
+    }
+    
+    private func startListeners() {
+        ideasListener?.remove()
+        categoriesListener?.remove()
+        notificationsListener?.remove()
+        ideasListener = SupabaseService.listenIdeas { [weak self] list in
+            DispatchQueue.main.async { self?.ideas = list }
+        }
+        categoriesListener = SupabaseService.listenCategories { [weak self] list in
+            DispatchQueue.main.async { self?.categories = list }
+        }
+        notificationsListener = SupabaseService.listenNotifications(targetDisplayName: currentUserName) { [weak self] list in
+            DispatchQueue.main.async { self?.notifications = list }
         }
     }
     
     var isLoggedIn: Bool { currentUserId != nil }
     
-    var needsOnboarding: Bool {
-        guard let id = currentUserId, let acc = account(byId: id) else { return false }
-        return !acc.hasCompletedOnboarding
+    var notificationsForCurrentUser: [AppNotification] {
+        notifications.sorted { $0.createdAt > $1.createdAt }
     }
     
-    func loadAccounts() {
-        guard FileManager.default.fileExists(atPath: accountsURL.path),
-              let data = try? Data(contentsOf: accountsURL),
-              let decoded = try? JSONDecoder().decode([Account].self, from: data) else {
-            return
+    var unreadNotificationCount: Int {
+        notificationsForCurrentUser.filter { !$0.isRead }.count
+    }
+    
+    func markNotificationRead(id: UUID) {
+        Task {
+            try? await SupabaseService.markNotificationRead(id: id)
         }
-        accounts = decoded
+        if let idx = notifications.firstIndex(where: { $0.id == id }) {
+            var n = notifications[idx]
+            n.isRead = true
+            notifications[idx] = n
+        }
     }
     
-    func saveAccounts() {
-        guard let data = try? JSONEncoder().encode(accounts) else { return }
-        try? data.write(to: accountsURL)
+    func markAllNotificationsRead() {
+        let ids = notificationsForCurrentUser.filter { !$0.isRead }.map(\.id)
+        Task {
+            try? await SupabaseService.markAllNotificationsRead(ids: ids)
+        }
+        notifications = notifications.map { var n = $0; n.isRead = true; return n }
+    }
+    
+    var needsOnboarding: Bool {
+        currentUserProfile?.glyphGrid == nil
     }
     
     func account(byId id: UUID) -> Account? {
-        accounts.first { $0.id == id }
+        guard id == currentUserId else { return nil }
+        guard let p = currentUserProfile, let appUserId = currentUserId else { return nil }
+        return Account(
+            id: appUserId,
+            email: p.email ?? "",
+            passwordHash: "",
+            displayName: p.displayName,
+            glyphGrid: p.glyphGrid,
+            auraPaletteIndex: p.auraPaletteIndex,
+            auraVariant: p.auraVariant
+        )
     }
     
-    private func hashPassword(_ password: String) -> String {
-        let data = Data(password.utf8)
-        let hash = SHA256.hash(data: data)
-        return hash.map { String(format: "%02x", $0) }.joined()
-    }
-    
-    func signUp(email: String, password: String, displayName: String) -> Bool {
+    func signUp(email: String, password: String, displayName: String) async throws {
         authError = nil
         let emailLower = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !emailLower.isEmpty, !password.isEmpty, !name.isEmpty else {
-            authError = "Fill in all fields."
-            return false
+            throw NSError(domain: "IdeaStore", code: -1, userInfo: [NSLocalizedDescriptionKey: "Fill in all fields."])
         }
-        guard !accounts.contains(where: { $0.email.lowercased() == emailLower }) else {
-            authError = "An account with this email already exists."
-            return false
+        let (appUserId, displayNameResult) = try await SupabaseService.signUp(email: emailLower, password: password, displayName: name)
+        await MainActor.run {
+            currentUserId = appUserId
+            currentUserName = displayNameResult
+            currentUserProfile = FirestoreUserProfile(appUserId: appUserId.uuidString, displayName: displayNameResult, email: emailLower, auraVariant: nil, auraPaletteIndex: nil, glyphGrid: nil, createdAt: nil)
+            startListeners()
         }
-        let account = Account(
-            email: emailLower,
-            passwordHash: hashPassword(password),
-            displayName: name.isEmpty ? emailLower : name
-        )
-        accounts.append(account)
-        saveAccounts()
-        currentUserId = account.id
-        currentUserName = account.displayName
-        return true
     }
     
-    func login(email: String, password: String) -> Bool {
+    func login(email: String, password: String) async throws {
         authError = nil
         let emailLower = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let hash = hashPassword(password)
-        guard let acc = accounts.first(where: { $0.email.lowercased() == emailLower && $0.passwordHash == hash }) else {
-            authError = "Invalid email or password."
-            return false
+        let (appUserId, displayName) = try await SupabaseService.login(email: emailLower, password: password)
+        let profileResult = try? await SupabaseService.fetchUserProfile()
+        await MainActor.run {
+            currentUserId = appUserId
+            currentUserName = displayName
+            if let result = profileResult {
+                currentUserProfile = result.profile
+            }
+            startListeners()
         }
-        currentUserId = acc.id
-        currentUserName = acc.displayName
-        return true
     }
     
     func logout() {
-        currentUserId = nil
-        currentUserName = "Anonymous"
+        Task {
+            try? await SupabaseService.logout()
+            await MainActor.run { handleSignedOut() }
+        }
     }
     
     var currentAccount: Account? {
         guard let id = currentUserId else { return nil }
         return account(byId: id)
     }
-
+    
     func updateAccountDisplayName(_ name: String) {
-        guard let id = currentUserId, let idx = accounts.firstIndex(where: { $0.id == id }) else { return }
-        let acc = accounts[idx]
-        accounts[idx] = Account(id: acc.id, email: acc.email, passwordHash: acc.passwordHash, displayName: name, glyphGrid: acc.glyphGrid, auraPaletteIndex: acc.auraPaletteIndex, auraVariant: acc.auraVariant)
-        saveAccounts()
-        currentUserName = name
+        guard !name.isEmpty else { return }
+        Task {
+            try? await SupabaseService.updateUserProfile(displayName: name)
+            await MainActor.run {
+                currentUserName = name
+                currentUserProfile?.displayName = name
+            }
+        }
     }
-
+    
     func completeOnboarding(glyphGrid: String, auraPaletteIndex: Int?, auraVariant: Int?, displayName: String?) {
-        guard let id = currentUserId, let idx = accounts.firstIndex(where: { $0.id == id }) else { return }
-        var acc = accounts[idx]
-        acc.glyphGrid = glyphGrid
-        acc.auraPaletteIndex = auraPaletteIndex
-        acc.auraVariant = auraVariant
-        if let name = displayName, !name.isEmpty {
-            acc.displayName = name
-            currentUserName = name
+        // Update local state immediately so the UI transitions to the main app right away
+        let name = (displayName?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? currentUserName
+        if !name.isEmpty { currentUserName = name }
+        if var p = currentUserProfile {
+            p.glyphGrid = glyphGrid
+            p.auraPaletteIndex = auraPaletteIndex
+            p.auraVariant = auraVariant
+            p.displayName = name
+            currentUserProfile = p
+        } else if let id = currentUserId {
+            // Profile can be nil e.g. if fetch failed after login; create one so we can leave onboarding
+            currentUserProfile = FirestoreUserProfile(
+                appUserId: id.uuidString,
+                displayName: name,
+                email: nil,
+                auraVariant: auraVariant,
+                auraPaletteIndex: auraPaletteIndex,
+                glyphGrid: glyphGrid,
+                createdAt: Date()
+            )
         }
-        accounts[idx] = acc
-        saveAccounts()
+        Task {
+            try? await SupabaseService.updateUserProfile(displayName: displayName, auraVariant: auraVariant, auraPaletteIndex: auraPaletteIndex, glyphGrid: glyphGrid)
+        }
     }
-
-    /// Update the current user's profile picture (aura) variant. Use after onboarding to change aura.
+    
     func updateAccountAura(auraVariant: Int) {
-        guard let id = currentUserId, let idx = accounts.firstIndex(where: { $0.id == id }) else { return }
-        var acc = accounts[idx]
-        acc.auraVariant = auraVariant
-        acc.auraPaletteIndex = nil
-        accounts[idx] = acc
-        saveAccounts()
-    }
-    
-    func loadCategories() {
-        guard FileManager.default.fileExists(atPath: categoriesURL.path),
-              let data = try? Data(contentsOf: categoriesURL),
-              let decoded = try? JSONDecoder().decode([Category].self, from: data) else {
-            return
+        Task {
+            try? await SupabaseService.updateUserProfile(auraVariant: auraVariant, auraPaletteIndex: nil)
+            await MainActor.run {
+                if var p = currentUserProfile {
+                    p.auraVariant = auraVariant
+                    p.auraPaletteIndex = nil
+                    currentUserProfile = p
+                }
+            }
         }
-        categories = decoded
-    }
-    
-    func saveCategories() {
-        guard let data = try? JSONEncoder().encode(categories) else { return }
-        try? data.write(to: categoriesURL)
     }
     
     func category(byId id: UUID) -> Category? {
@@ -210,57 +270,67 @@ final class IdeaStore: ObservableObject {
         category(byId: id)?.actionVerb ?? "Complete"
     }
     
-    func addCategory(displayName: String, actionVerb: String = "Complete") {
+    @discardableResult
+    func addCategory(displayName: String, actionVerb: String = "Complete") -> Category {
         let cat = Category(id: UUID(), displayName: displayName, actionVerb: actionVerb, isSystem: false)
         categories.append(cat)
-        saveCategories()
+        Task {
+            try? await SupabaseService.addCategory(cat)
+        }
+        return cat
     }
     
     func removeCategory(id: UUID) {
         guard let cat = category(byId: id), !cat.isSystem else { return }
         categories.removeAll { $0.id == id }
-        saveCategories()
+        Task {
+            try? await SupabaseService.removeCategory(id: id)
+        }
     }
     
     func deleteAccount() {
         let nameToRemove = currentUserName
         if let id = currentUserId {
-            accounts.removeAll { $0.id == id }
-            saveAccounts()
             currentUserId = nil
+            currentUserName = "Anonymous"
+            currentUserProfile = nil
+            handleSignedOut()
         }
-        currentUserName = "Anonymous"
-        ideas = ideas.filter { $0.authorDisplayName != nameToRemove }
-        saveIdeas()
     }
     
-    func loadIdeas() {
-        guard FileManager.default.fileExists(atPath: fileURL.path),
-              let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([Idea].self, from: data) else {
-            return
+    func addIdea(_ idea: Idea) async throws {
+        postError = nil
+        guard let authorId = currentUserId else {
+            throw NSError(domain: "IdeaStore", code: -1, userInfo: [NSLocalizedDescriptionKey: "You must be signed in to post."])
         }
-        ideas = decoded.sorted { $0.createdAt > $1.createdAt }
-    }
-    
-    func saveIdeas() {
-        guard let data = try? JSONEncoder().encode(ideas) else { return }
-        try? data.write(to: fileURL)
-    }
-    
-    func addIdea(_ idea: Idea) {
-        ideas.insert(idea, at: 0)
-        saveIdeas()
+        let dir = attachmentsDirectory(for: idea.id)
+        for att in idea.attachments {
+            let localURL = dir.appendingPathComponent(att.fileName)
+            if FileManager.default.fileExists(atPath: localURL.path),
+               let data = try? Data(contentsOf: localURL) {
+                _ = try await SupabaseService.uploadAttachmentData(ideaId: idea.id, data: data, fileName: att.fileName)
+            }
+        }
+        try await SupabaseService.addIdea(idea, authorId: authorId)
+        try? await SupabaseService.addNotification(AppNotification(type: .newIdea, ideaId: idea.id, actorDisplayName: currentUserName, targetDisplayName: ""))
+        await MainActor.run {
+            ideas.insert(idea, at: 0)
+        }
     }
     
     func addContribution(ideaId: UUID, content: String, isPublic: Bool = true) {
         guard let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
+        let idea = ideas[index]
         let contribution = Contribution(authorDisplayName: currentUserName, content: content, isPublic: isPublic)
         ideas[index].contributions.append(contribution)
-        saveIdeas()
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[index].contributions, attachments: ideas[index].attachments)
+            if idea.authorDisplayName != currentUserName {
+                try? await SupabaseService.addNotification(AppNotification(type: .contribution, ideaId: ideaId, contributionId: contribution.id, actorDisplayName: currentUserName, targetDisplayName: idea.authorDisplayName))
+            }
+        }
     }
     
-    /// Toggle or set reaction. If user already has this reaction type, remove it; otherwise set it (replacing any previous reaction from this user).
     func toggleReaction(ideaId: UUID, contributionId: UUID, type: String) {
         guard let userId = currentUserId,
               let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
@@ -276,10 +346,22 @@ final class IdeaStore: ObservableObject {
             }
         } else {
             contrib.reactions.append(Reaction(accountId: userId, type: type))
+            let authorName = contrib.authorDisplayName
+            idea.contributions[contribIndex] = contrib
+            ideas[ideaIndex] = idea
+            Task {
+                try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+                if authorName != currentUserName {
+                    try? await SupabaseService.addNotification(AppNotification(type: .reaction, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: authorName))
+                }
+            }
+            return
         }
         idea.contributions[contribIndex] = contrib
         ideas[ideaIndex] = idea
-        saveIdeas()
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
     }
     
     func addComment(ideaId: UUID, contributionId: UUID, content: String) {
@@ -289,59 +371,45 @@ final class IdeaStore: ObservableObject {
               let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }) else { return }
         var idea = ideas[ideaIndex]
         var contrib = idea.contributions[contribIndex]
+        let authorName = contrib.authorDisplayName
         contrib.comments.append(Comment(authorDisplayName: currentUserName, content: trimmed))
         idea.contributions[contribIndex] = contrib
         ideas[ideaIndex] = idea
-        saveIdeas()
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+            if authorName != currentUserName {
+                try? await SupabaseService.addNotification(AppNotification(type: .comment, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: authorName))
+            }
+        }
     }
     
-    /// The current user's reaction type on this contribution, if any.
     func currentUserReactionType(for contribution: Contribution) -> String? {
         guard let userId = currentUserId else { return nil }
         return contribution.reactions.first { $0.accountId == userId }?.type
     }
     
     func didCurrentUserLike(contribution: Contribution) -> Bool {
-        return currentUserReactionType(for: contribution) == ReactionType.heart.rawValue
+        currentUserReactionType(for: contribution) == ReactionType.heart.rawValue
     }
     
     func updateIdeaContent(ideaId: UUID, newContent: String) {
         guard let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
         ideas[index].content = newContent
-        saveIdeas()
     }
     
     func idea(byId id: UUID) -> Idea? {
         ideas.first { $0.id == id }
     }
     
-    private func seedSampleIdeas() {
-        ideas = [
-            Idea(
-                categoryId: Category.melodyId,
-                content: "Humming a bridge for this melancholic loop. Needs a resolution.",
-                authorDisplayName: "Anonymous",
-                contributions: []
-            ),
-            Idea(
-                categoryId: Category.fictionId,
-                content: "\"The train station was empty, save for a single yellow chair in the center of the platform. I sat down, and the world...\" finish this sentence",
-                authorDisplayName: "K",
-                contributions: []
-            ),
-            Idea(
-                categoryId: Category.conceptId,
-                content: "An app that deletes your photos if you don't look at them once a year. Digital impermanence.",
-                authorDisplayName: "M",
-                contributions: []
-            ),
-            Idea(
-                categoryId: Category.poetryId,
-                content: "The sun dips low\nThe shadows grow\nBut I am still waiting for...",
-                authorDisplayName: "L",
-                contributions: []
-            )
-        ]
-        saveIdeas()
+    func deleteIdea(ideaId: UUID) async throws {
+        guard let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
+        let idea = ideas[index]
+        guard idea.authorDisplayName == currentUserName else {
+            throw NSError(domain: "IdeaStore", code: -1, userInfo: [NSLocalizedDescriptionKey: "You can only delete your own ideas."])
+        }
+        try await SupabaseService.deleteIdea(ideaId: ideaId)
+        await MainActor.run {
+            ideas.removeAll { $0.id == ideaId }
+        }
     }
 }

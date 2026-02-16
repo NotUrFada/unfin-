@@ -39,6 +39,10 @@ struct CreateIdeaView: View {
     @State private var pendingFiles: [PendingFile] = []
     @State private var showFileImporter = false
     
+    @State private var showNewCategorySheet = false
+    @State private var newCategoryName = ""
+    @State private var newCategoryVerb = "Complete"
+    
     private var hasContent: Bool {
         !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -79,6 +83,14 @@ struct CreateIdeaView: View {
             } message: {
                 Text("Your idea is now in the feed. Others can complete it.")
             }
+            .alert("Couldn’t post idea", isPresented: Binding(
+                get: { store.postError != nil },
+                set: { if !$0 { store.postError = nil } }
+            )) {
+                Button("OK") { store.postError = nil }
+            } message: {
+                Text(store.postError ?? "")
+            }
             .fileImporter(
                 isPresented: $showFileImporter,
                 allowedContentTypes: [
@@ -118,6 +130,67 @@ struct CreateIdeaView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    Button {
+                        newCategoryName = ""
+                        newCategoryVerb = "Complete"
+                        showNewCategorySheet = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 12))
+                            Text("New category")
+                                .font(.system(size: 14))
+                        }
+                        .foregroundStyle(Color.white.opacity(0.9))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.15))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .sheet(isPresented: $showNewCategorySheet) {
+            newCategorySheet
+        }
+    }
+    
+    private var newCategorySheet: some View {
+        NavigationStack {
+            ZStack {
+                Color(white: 0.12).ignoresSafeArea()
+                Form {
+                    TextField("Category name", text: $newCategoryName)
+                        .foregroundStyle(Color(white: 0.1))
+                    TextField("Action verb (e.g. Complete, Write)", text: $newCategoryVerb)
+                        .foregroundStyle(Color(white: 0.1))
+                }
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("New category")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showNewCategorySheet = false
+                    }
+                    .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let verb = newCategoryVerb.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !name.isEmpty {
+                            let cat = store.addCategory(displayName: name, actionVerb: verb.isEmpty ? "Complete" : verb)
+                            selectedCategoryId = cat.id
+                            showNewCategorySheet = false
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -273,16 +346,25 @@ struct CreateIdeaView: View {
                     }
                     try? FileManager.default.removeItem(at: file.localURL)
                 }
-                let idea = Idea(
-                    id: ideaId,
-                    categoryId: selectedCategoryId,
-                    content: content.trimmingCharacters(in: .whitespacesAndNewlines),
-                    authorDisplayName: store.currentUserName,
-                    attachments: attachments
-                )
-                store.addIdea(idea)
-                isPosting = false
-                showAlert = true
+            }
+            let idea = Idea(
+                id: ideaId,
+                categoryId: selectedCategoryId,
+                content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+                authorDisplayName: store.currentUserName,
+                attachments: attachments
+            )
+            do {
+                try await store.addIdea(idea)
+                await MainActor.run {
+                    isPosting = false
+                    showAlert = true
+                }
+            } catch {
+                await MainActor.run {
+                    isPosting = false
+                    store.postError = error.localizedDescription
+                }
             }
         }
     }

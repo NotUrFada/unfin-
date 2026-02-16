@@ -11,6 +11,7 @@ struct SignUpView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var displayName = ""
+    @State private var isBusy = false
     @FocusState private var focusedField: Field?
     
     enum Field { case email, password, displayName }
@@ -82,11 +83,21 @@ struct SignUpView: View {
                     }
                     
                     Button {
-                        if store.signUp(email: email, password: password, displayName: displayName) {
-                            dismiss()
+                        isBusy = true
+                        store.authError = nil
+                        Task {
+                            do {
+                                try await store.signUp(email: email, password: password, displayName: displayName)
+                                await MainActor.run { dismiss() }
+                            } catch {
+                                await MainActor.run {
+                                    store.authError = error.localizedDescription
+                                    isBusy = false
+                                }
+                            }
                         }
                     } label: {
-                        Text("Sign Up")
+                        Text(isBusy ? "Creating account…" : "Sign Up")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Color(white: 0.12))
                             .frame(maxWidth: .infinity)
@@ -95,6 +106,7 @@ struct SignUpView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     .buttonStyle(.plain)
+                    .disabled(isBusy)
                     .padding(.top, 8)
                     
                     Spacer(minLength: 40)
@@ -105,12 +117,6 @@ struct SignUpView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color(white: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Back") { dismiss() }
-                    .foregroundStyle(.white)
-            }
-        }
         .onAppear { store.authError = nil }
     }
 }

@@ -12,6 +12,8 @@ struct FeedView: View {
     
     @State private var selectedFilterId: UUID? = nil
     @State private var navigationPath = NavigationPath()
+    @State private var showNotifications = false
+    @State private var pendingIdeaIdToOpen: UUID?
     
     private var filteredIdeas: [Idea] {
         var list = store.ideas
@@ -29,18 +31,32 @@ struct FeedView: View {
                     IdeaDetailView(ideaId: id)
                 }
         }
+        .sheet(isPresented: $showNotifications) {
+            NotificationsView(onSelectIdea: { id in
+                pendingIdeaIdToOpen = id
+                showNotifications = false
+            })
+            .environmentObject(store)
+        }
+        .onChange(of: showNotifications) { _, visible in
+            if !visible, let id = pendingIdeaIdToOpen {
+                navigationPath.append(id)
+                pendingIdeaIdToOpen = nil
+            }
+        }
     }
     
     private var feedContent: some View {
         ZStack(alignment: .bottomTrailing) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                    filterTabs
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                filterTabs
+                ScrollView {
                     feedList
                 }
+                .scrollIndicators(.visible, axes: .vertical)
+                .frame(maxHeight: .infinity)
             }
-            .scrollIndicators(.visible, axes: .vertical)
             
             fabButton
         }
@@ -59,6 +75,26 @@ struct FeedView: View {
                     .foregroundStyle(Color.white)
             }
             Spacer()
+            Button {
+                showNotifications = true
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Color.white)
+                    if store.unreadNotificationCount > 0 {
+                        Text("\(min(store.unreadNotificationCount, 99))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(4)
+                            .background(Color.red)
+                            .clipShape(Circle())
+                            .offset(x: 8, y: -8)
+                    }
+                }
+                .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
             Text(store.currentUserName)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Color.white)

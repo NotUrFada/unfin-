@@ -34,6 +34,7 @@ struct MainTabView: View {
         }
         .sheet(isPresented: $showCreateIdea) {
             CreateIdeaView()
+                .environmentObject(store)
         }
     }
     
