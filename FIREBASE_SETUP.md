@@ -6,7 +6,7 @@ Follow these steps to connect the app to Firebase.
 
 1. Go to [Firebase Console](https://console.firebase.google.com/).
 2. Create a new project (or use an existing one).
-3. Add an **iOS app** and register your app’s bundle ID (e.g. `com.afterlight.app`).
+3. Add an **iOS app** and register your app’s bundle ID (e.g. `io.unfin.app`).
 4. Download **GoogleService-Info.plist** and add it to the **Afterlight** target in Xcode (drag into the project, ensure “Copy items if needed” and the Afterlight target are checked).
 
 ## 2. Add the Firebase SDK (Swift Package Manager)

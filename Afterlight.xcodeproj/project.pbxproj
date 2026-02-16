@@ -17,7 +17,6 @@
 		A1B2C3D40000000800000004 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000800000004 /* ProfileView.swift */; };
 		A1B2C3D40000000900000004 /* IdeaCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000900000004 /* IdeaCardView.swift */; };
 		A1B2C3D40000000C00000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000C00000004 /* Assets.xcassets */; };
-		A1B2C3D40000001B00000004 /* Supabase-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001B00000004 /* Supabase-Info.plist */; };
 		A1B2C3D40000000D00000004 /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000D00000004 /* ExploreView.swift */; };
 		A1B2C3D40000000E00000004 /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000E00000004 /* Category.swift */; };
 		A1B2C3D40000000F00000004 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000F00000004 /* SettingsView.swift */; };
@@ -31,6 +30,7 @@
 		A1B2C3D40000001700000004 /* AppNotification.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001700000004 /* AppNotification.swift */; };
 		A1B2C3D40000001800000004 /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001800000004 /* NotificationsView.swift */; };
 		A1B2C3D40000001A00000004 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001A00000004 /* SupabaseService.swift */; };
+		A1B2C3D40000001B00000004 /* Supabase-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001B00000004 /* Supabase-Info.plist */; };
 		A1B2C3D40000001C00000004 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001C00000004 /* AppDelegate.swift */; };
 		SB01CE973F427B6A00D61DEE /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = SB01CE972F427B6A00D61DEE /* Supabase */; };
 /* End PBXBuildFile section */
@@ -314,7 +314,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = M79733KQKW;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Afterlight/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -324,7 +324,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.afterlight.app;
+				PRODUCT_BUNDLE_IDENTIFIER = io.unfin.app;
 				PRODUCT_NAME = Unfin;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -339,7 +339,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = M79733KQKW;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Afterlight/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -349,7 +349,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.afterlight.app;
+				PRODUCT_BUNDLE_IDENTIFIER = io.unfin.app;
 				PRODUCT_NAME = Unfin;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
