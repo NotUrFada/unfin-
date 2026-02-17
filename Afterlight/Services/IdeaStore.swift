@@ -58,15 +58,25 @@ final class IdeaStore: ObservableObject {
     @Published var notifications: [AppNotification] = []
     
     init() {
+        #if DEBUG
+        // When running from Xcode, start at the welcome screen (don’t restore session).
+        self.currentUserId = nil
+        self.currentUserName = "Anonymous"
+        #else
         let savedUserId = UserDefaults.standard.string(forKey: "currentUserId").flatMap { UUID(uuidString: $0) }
         self.currentUserId = savedUserId
         self.currentUserName = UserDefaults.standard.string(forKey: "currentUserName") ?? "Anonymous"
-        
+        #endif
     }
     
     /// Call from the root view’s .task { await store.restoreSessionIfNeeded() } to restore session on launch.
     @MainActor
     func restoreSessionIfNeeded() async {
+        #if DEBUG
+        // When running from Xcode, skip restore so the app starts at the welcome screen.
+        categories = Category.defaultSystemCategories
+        return
+        #endif
         if await SupabaseService.currentSession != nil {
             await handleSignedIn()
         } else {
