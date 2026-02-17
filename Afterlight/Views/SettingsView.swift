@@ -129,7 +129,7 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0")
+                        Text("1.1")
                             .foregroundStyle(.white.opacity(0.5))
                     }
                     .listRowBackground(Color.white.opacity(0.08))
