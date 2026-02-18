@@ -73,6 +73,20 @@ struct FeedView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .tracking(-0.5)
                     .foregroundStyle(Color.white)
+                if store.isLoggedIn && store.currentStreak > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.orange)
+                        Text("\(store.currentStreak)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.15))
+                    .clipShape(Capsule())
+                }
             }
             Spacer()
             Button {

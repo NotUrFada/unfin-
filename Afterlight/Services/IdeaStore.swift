@@ -202,6 +202,11 @@ final class IdeaStore: ObservableObject {
         currentUserProfile?.glyphGrid == nil
     }
     
+    /// Current consecutive-day streak (post idea, contribution, or comment). Read from profile; updated when recordActivity() runs.
+    var currentStreak: Int {
+        currentUserProfile?.streakCount ?? 0
+    }
+    
     func account(byId id: UUID) -> Account? {
         guard id == currentUserId else { return nil }
         guard let p = currentUserProfile, let appUserId = currentUserId else { return nil }
@@ -227,7 +232,7 @@ final class IdeaStore: ObservableObject {
         await MainActor.run {
             currentUserId = appUserId
             currentUserName = displayNameResult
-            currentUserProfile = FirestoreUserProfile(appUserId: appUserId.uuidString, displayName: displayNameResult, email: emailLower, auraVariant: nil, auraPaletteIndex: nil, glyphGrid: nil, createdAt: nil)
+            currentUserProfile = FirestoreUserProfile(appUserId: appUserId.uuidString, displayName: displayNameResult, email: emailLower, auraVariant: nil, auraPaletteIndex: nil, glyphGrid: nil, createdAt: nil, streakCount: 0, streakLastDate: nil)
             startListeners()
         }
     }
@@ -289,7 +294,9 @@ final class IdeaStore: ObservableObject {
                 auraVariant: auraVariant,
                 auraPaletteIndex: auraPaletteIndex,
                 glyphGrid: glyphGrid,
-                createdAt: Date()
+                createdAt: Date(),
+                streakCount: 0,
+                streakLastDate: nil
             )
         }
         Task {
@@ -365,8 +372,14 @@ final class IdeaStore: ObservableObject {
         }
         try await SupabaseService.addIdea(idea, authorId: authorId)
         try? await SupabaseService.addNotification(AppNotification(type: .newIdea, ideaId: idea.id, actorDisplayName: currentUserName, targetDisplayName: ""))
+        let newStreak = try? await SupabaseService.recordActivity()
         await MainActor.run {
             ideas.insert(idea, at: 0)
+            if let s = newStreak, var p = currentUserProfile {
+                p.streakCount = s
+                p.streakLastDate = Date()
+                currentUserProfile = p
+            }
         }
     }
     
@@ -379,6 +392,14 @@ final class IdeaStore: ObservableObject {
             try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[index].contributions, attachments: ideas[index].attachments)
             if idea.authorDisplayName != currentUserName {
                 try? await SupabaseService.addNotification(AppNotification(type: .contribution, ideaId: ideaId, contributionId: contribution.id, actorDisplayName: currentUserName, targetDisplayName: idea.authorDisplayName))
+            }
+            let newStreak = try? await SupabaseService.recordActivity()
+            await MainActor.run {
+                if let s = newStreak, var p = currentUserProfile {
+                    p.streakCount = s
+                    p.streakLastDate = Date()
+                    currentUserProfile = p
+                }
             }
         }
     }
@@ -433,6 +454,14 @@ final class IdeaStore: ObservableObject {
             try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
             if authorName != currentUserName {
                 try? await SupabaseService.addNotification(AppNotification(type: .comment, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: authorName))
+            }
+            let newStreak = try? await SupabaseService.recordActivity()
+            await MainActor.run {
+                if let s = newStreak, var p = currentUserProfile {
+                    p.streakCount = s
+                    p.streakLastDate = Date()
+                    currentUserProfile = p
+                }
             }
         }
     }

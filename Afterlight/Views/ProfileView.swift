@@ -139,6 +139,16 @@ struct ProfileView: View {
                         Text(store.currentUserName)
                             .font(.system(size: 24, weight: .medium))
                             .foregroundStyle(.white)
+                        if store.currentStreak > 0 {
+                            HStack(spacing: 5) {
+                                Image(systemName: "flame.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.orange)
+                                Text("\(store.currentStreak) day streak")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.white.opacity(0.9))
+                            }
+                        }
                         Button {
                             editingName = true
                         } label: {

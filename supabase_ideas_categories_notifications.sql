@@ -61,6 +61,10 @@ alter table public.push_tokens enable row level security;
 drop policy if exists "Allow all for push_tokens" on public.push_tokens;
 create policy "Allow all for push_tokens" on public.push_tokens for all using (true) with check (true);
 
+-- Streaks (profiles: consecutive days with at least one idea, contribution, or comment)
+alter table public.profiles add column if not exists streak_count int not null default 0;
+alter table public.profiles add column if not exists streak_last_date date;
+
 -- Storage bucket for attachments (ignore if already exists)
 insert into storage.buckets (id, name, public)
 values ('attachments', 'attachments', false)

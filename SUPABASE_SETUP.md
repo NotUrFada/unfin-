@@ -8,6 +8,8 @@ The app uses **Supabase** for auth, database (Postgres), and storage instead of 
 
 **Voice ideas and edit/delete** → the schema includes `voice_path` on ideas and voice/edited fields in contributions and comments (JSONB). If you already ran the SQL before, run `supabase_ideas_categories_notifications.sql` again (it uses `add column if not exists`) or run: `alter table public.ideas add column if not exists voice_path text;`
 
+**Streaks** → profiles need `streak_count` and `streak_last_date`. Run the migration in `supabase_ideas_categories_notifications.sql` (add column if not exists) or: `alter table public.profiles add column if not exists streak_count int not null default 0; alter table public.profiles add column if not exists streak_last_date date;`
+
 ## 1. Create a Supabase project
 
 1. Go to [supabase.com](https://supabase.com) and create a project.

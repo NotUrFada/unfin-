@@ -44,6 +44,8 @@ struct FirestoreUserProfile {
     var auraPaletteIndex: Int?
     var glyphGrid: String?
     var createdAt: Date?
+    var streakCount: Int
+    var streakLastDate: Date?
 }
 
 // MARK: - DB row types (snake_case for Postgres)
@@ -57,6 +59,8 @@ private struct ProfileRow: Codable {
     let auraPaletteIndex: Int?
     let glyphGrid: String?
     let createdAt: Date?
+    let streakCount: Int
+    let streakLastDate: Date?
     
     enum CodingKeys: String, CodingKey {
         case id, displayName = "display_name", email
@@ -65,6 +69,58 @@ private struct ProfileRow: Codable {
         case auraPaletteIndex = "aura_palette_index"
         case glyphGrid = "glyph_grid"
         case createdAt = "created_at"
+        case streakCount = "streak_count"
+        case streakLastDate = "streak_last_date"
+    }
+    
+    init(id: UUID, appUserId: UUID, displayName: String, email: String?, auraVariant: Int?, auraPaletteIndex: Int?, glyphGrid: String?, createdAt: Date?, streakCount: Int = 0, streakLastDate: Date? = nil) {
+        self.id = id
+        self.appUserId = appUserId
+        self.displayName = displayName
+        self.email = email
+        self.auraVariant = auraVariant
+        self.auraPaletteIndex = auraPaletteIndex
+        self.glyphGrid = glyphGrid
+        self.createdAt = createdAt
+        self.streakCount = streakCount
+        self.streakLastDate = streakLastDate
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        appUserId = try c.decode(UUID.self, forKey: .appUserId)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        email = try c.decodeIfPresent(String.self, forKey: .email)
+        auraVariant = try c.decodeIfPresent(Int.self, forKey: .auraVariant)
+        auraPaletteIndex = try c.decodeIfPresent(Int.self, forKey: .auraPaletteIndex)
+        glyphGrid = try c.decodeIfPresent(String.self, forKey: .glyphGrid)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
+        streakCount = try c.decodeIfPresent(Int.self, forKey: .streakCount) ?? 0
+        if let d = try c.decodeIfPresent(Date.self, forKey: .streakLastDate) {
+            streakLastDate = d
+        } else if let s = try c.decodeIfPresent(String.self, forKey: .streakLastDate) {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            fmt.timeZone = TimeZone(identifier: "UTC")
+            streakLastDate = fmt.date(from: s)
+        } else {
+            streakLastDate = nil
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(appUserId, forKey: .appUserId)
+        try c.encode(displayName, forKey: .displayName)
+        try c.encodeIfPresent(email, forKey: .email)
+        try c.encodeIfPresent(auraVariant, forKey: .auraVariant)
+        try c.encodeIfPresent(auraPaletteIndex, forKey: .auraPaletteIndex)
+        try c.encodeIfPresent(glyphGrid, forKey: .glyphGrid)
+        try c.encodeIfPresent(createdAt, forKey: .createdAt)
+        try c.encode(streakCount, forKey: .streakCount)
+        try c.encodeIfPresent(streakLastDate, forKey: .streakLastDate)
     }
 }
 
@@ -329,7 +385,9 @@ extension SupabaseService {
             auraVariant: nil,
             auraPaletteIndex: nil,
             glyphGrid: nil,
-            createdAt: Date()
+            createdAt: Date(),
+            streakCount: 0,
+            streakLastDate: nil
         )
         try await client.from("profiles").insert(profile).execute()
         return (appUserId, displayName)
@@ -361,9 +419,41 @@ extension SupabaseService {
             auraVariant: row.auraVariant,
             auraPaletteIndex: row.auraPaletteIndex,
             glyphGrid: row.glyphGrid,
-            createdAt: row.createdAt
+            createdAt: row.createdAt,
+            streakCount: row.streakCount,
+            streakLastDate: row.streakLastDate
         )
         return (row.appUserId, row.displayName, p)
+    }
+    
+    /// Call after the user posts an idea, adds a contribution, or adds a comment. Fetches profile, computes new streak (consecutive calendar days), updates profile, returns new streak.
+    static func recordActivity() async throws -> Int {
+        guard let session = try? await client.auth.session else { return 0 }
+        let rows: [ProfileRow] = try await client.from("profiles").select().eq("id", value: session.user.id).execute().value
+        guard let row = rows.first else { return 0 }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let lastDate = row.streakLastDate.map { calendar.startOfDay(for: $0) }
+        let newStreak: Int
+        if let last = lastDate {
+            let daysDiff = calendar.dateComponents([.day], from: last, to: today).day ?? 0
+            if daysDiff == 0 { newStreak = row.streakCount }
+            else if daysDiff == 1 { newStreak = row.streakCount + 1 }
+            else { newStreak = 1 }
+        } else {
+            newStreak = 1
+        }
+        struct StreakUpdate: Encodable {
+            let streak_count: Int
+            let streak_last_date: String
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone.current
+        let dateString = formatter.string(from: today)
+        let payload = StreakUpdate(streak_count: newStreak, streak_last_date: dateString)
+        try await client.from("profiles").update(payload).eq("id", value: session.user.id).execute()
+        return newStreak
     }
     
     static func updateUserProfile(displayName: String? = nil, auraVariant: Int? = nil, auraPaletteIndex: Int? = nil, glyphGrid: String? = nil) async throws {
