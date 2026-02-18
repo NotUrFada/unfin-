@@ -32,7 +32,8 @@ struct SettingsView: View {
                             AuraAvatarView(
                                 size: 44,
                                 auraVariant: store.currentAccount?.auraVariant,
-                                legacyPaletteIndex: store.currentAccount?.auraPaletteIndex
+                                legacyPaletteIndex: store.currentAccount?.auraPaletteIndex,
+                                fallbackDisplayName: store.currentUserName
                             )
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Profile picture")

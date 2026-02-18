@@ -21,6 +21,12 @@ enum AppBackgroundStyle: String, CaseIterable {
 
 let appBackgroundStyleKey = "appBackgroundStyle"
 
+enum FeedSort: String, CaseIterable {
+    case newest = "Newest"
+    case mostCompletions = "Most completions"
+    case mostReactions = "Most reactions"
+}
+
 struct FeedView: View {
     @EnvironmentObject var store: IdeaStore
     @Environment(\.colorScheme) private var colorScheme
@@ -33,14 +39,23 @@ struct FeedView: View {
     private var surfaceOpacity: Double { isLight ? 0.12 : 0.15 }
 
     @State private var selectedFilterId: UUID? = nil
+    @State private var feedSort: FeedSort = .newest
     @State private var navigationPath = NavigationPath()
     @State private var showNotifications = false
     @State private var pendingIdeaIdToOpen: UUID?
     
     private var filteredIdeas: [Idea] {
-        var list = store.ideas
+        var list = store.ideas.filter { !store.hiddenIdeaIds.contains($0.id) }
         if let id = selectedFilterId ?? filterCategoryId {
             list = list.filter { $0.categoryId == id }
+        }
+        switch feedSort {
+        case .newest:
+            list.sort { $0.createdAt > $1.createdAt }
+        case .mostCompletions:
+            list.sort { $0.contributions.count > $1.contributions.count }
+        case .mostReactions:
+            list.sort { $0.contributions.reduce(0) { $0 + $1.totalReactionCount } > $1.contributions.reduce(0) { $0 + $1.totalReactionCount } }
         }
         return list
     }
@@ -81,6 +96,7 @@ struct FeedView: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 filterTabs
+                sortPicker
                 ScrollView {
                     feedList
                 }
@@ -95,10 +111,6 @@ struct FeedView: View {
     private var header: some View {
         HStack {
             HStack(spacing: 8) {
-                Image("Logo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
                 Text("UNFIN")
                     .font(.system(size: 14, weight: .semibold))
                     .tracking(-0.5)
@@ -169,6 +181,40 @@ struct FeedView: View {
             .padding(.bottom, 8)
         }
         .padding(.bottom, 10)
+    }
+
+    private var sortPicker: some View {
+        Menu {
+            ForEach(FeedSort.allCases, id: \.rawValue) { sort in
+                Button {
+                    feedSort = sort
+                } label: {
+                    HStack {
+                        Text(sort.rawValue)
+                        if feedSort == sort {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text("Sort: \(feedSort.rawValue)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(secondaryFg)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(secondaryFg)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(primaryFg.opacity(0.1))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 8)
     }
     
     private var feedList: some View {

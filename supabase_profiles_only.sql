@@ -9,7 +9,9 @@ create table if not exists public.profiles (
   aura_variant int,
   aura_palette_index int,
   glyph_grid text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  streak_count int not null default 0,
+  streak_last_date date
 );
 
 alter table public.profiles enable row level security;

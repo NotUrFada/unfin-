@@ -44,6 +44,7 @@ struct MainTabView: View {
         .onAppear {
             if store.isLoggedIn {
                 UIApplication.shared.applicationIconBadgeNumber = store.unreadNotificationCount
+                store.refreshUserProfileIfNeeded()
             }
         }
     }

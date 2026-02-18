@@ -76,7 +76,10 @@ struct LoginView: View {
                                 await MainActor.run { dismiss() }
                             } catch {
                                 await MainActor.run {
-                                    store.authError = error.localizedDescription
+                                    let msg = error.localizedDescription
+                                    store.authError = (msg.isEmpty || msg.contains("it isn't") || msg.contains("not found"))
+                                        ? "Invalid email or password. If you just signed up, check your inbox to confirm your email."
+                                        : msg
                                     isBusy = false
                                 }
                             }

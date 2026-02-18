@@ -36,6 +36,8 @@
 		A1B2C3D40000001D00000004 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001D00000004 /* VoiceRecorder.swift */; };
 		A1B2C3D40000001E00000004 /* VoicePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001E00000004 /* VoicePlaybackView.swift */; };
 		A1B2C3D40000001F00000004 /* NoisyGradient.metal in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001F00000004 /* NoisyGradient.metal */; };
+		A1B2C3D40000002100000004 /* DrawingCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000002100000004 /* DrawingCanvasView.swift */; };
+		A1B2C3D40000002200000004 /* IdeaDrawingSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000002200000004 /* IdeaDrawingSectionView.swift */; };
 		SB01CE973F427B6A00D61DEE /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = SB01CE972F427B6A00D61DEE /* Supabase */; };
 /* End PBXBuildFile section */
 
@@ -71,6 +73,8 @@
 		A1B2C3D50000001D00000004 /* VoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecorder.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001E00000004 /* VoicePlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001F00000004 /* NoisyGradient.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = NoisyGradient.metal; sourceTree = "<group>"; };
+		A1B2C3D50000002100000004 /* DrawingCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingCanvasView.swift; sourceTree = "<group>"; };
+		A1B2C3D50000002200000004 /* IdeaDrawingSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaDrawingSectionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -148,6 +152,8 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D50000000900000004 /* IdeaCardView.swift */,
+				A1B2C3D50000002100000004 /* DrawingCanvasView.swift */,
+				A1B2C3D50000002200000004 /* IdeaDrawingSectionView.swift */,
 				A1B2C3D50000001500000004 /* AuraAvatarView.swift */,
 				A1B2C3D50000001E00000004 /* VoicePlaybackView.swift */,
 			);
@@ -265,6 +271,8 @@
 				A1B2C3D40000001D00000004 /* VoiceRecorder.swift in Sources */,
 				A1B2C3D40000001E00000004 /* VoicePlaybackView.swift in Sources */,
 				A1B2C3D40000001F00000004 /* NoisyGradient.metal in Sources */,
+				A1B2C3D40000002100000004 /* DrawingCanvasView.swift in Sources */,
+				A1B2C3D40000002200000004 /* IdeaDrawingSectionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -7,6 +7,7 @@ import SwiftUI
 import QuickLook
 import PhotosUI
 import UniformTypeIdentifiers
+import PencilKit
 
 struct IdeaDetailView: View {
     @EnvironmentObject var store: IdeaStore
@@ -21,6 +22,8 @@ struct IdeaDetailView: View {
     @State private var isDeleting = false
     @State private var deleteError: String?
     @State private var expandedCommentContributionId: UUID?
+    @State private var showReportIdeaSheet = false
+    @State private var showHideIdeaConfirm = false
     @FocusState private var focusField: Bool
     
     @StateObject private var completionVoiceRecorder = VoiceRecorder()
@@ -28,6 +31,9 @@ struct IdeaDetailView: View {
     @State private var selectedCompletionPhotoItems: [PhotosPickerItem] = []
     @State private var completionPendingFiles: [PendingFile] = []
     @State private var showCompletionFileImporter = false
+    @State private var completionDrawing = PKDrawing()
+    /// Base drawing (author + previous contributions) so we upload only the user's new strokes.
+    @State private var completionDrawingBase = PKDrawing()
     
     private var ideaToShow: Idea? {
         store.idea(byId: ideaId)
@@ -68,9 +74,34 @@ struct IdeaDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            if canDelete, let idea = ideaToShow, !idea.isFinished {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        store.markIdeaAsFinished(ideaId: ideaId)
+                    } label: {
+                        Label("Mark as finished", systemImage: "checkmark.circle")
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
+            }
+            if store.currentUserId != nil, !canDelete {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button {
+                            showReportIdeaSheet = true
+                        } label: { Label("Report", systemImage: "exclamationmark.triangle") }
+                        Button {
+                            showHideIdeaConfirm = true
+                        } label: { Label("Don't show this again", systemImage: "eye.slash") }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
+            }
             if canDelete {
                 ToolbarItem(placement: .destructiveAction) {
                     Button(role: .destructive) {
@@ -107,6 +138,25 @@ struct IdeaDetailView: View {
         } message: {
             Text(deleteError ?? "")
         }
+        .alert("Don't show this again?", isPresented: $showHideIdeaConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Hide") {
+                store.hideIdea(ideaId: ideaId)
+                dismiss()
+            }
+        } message: {
+            Text("This idea will be removed from your feed.")
+        }
+        .sheet(isPresented: $showReportIdeaSheet) {
+            ReportReasonSheet(
+                title: "Report idea",
+                onSubmit: { reason, details in
+                    store.reportIdea(ideaId: ideaId, reason: reason, details: details)
+                    showReportIdeaSheet = false
+                },
+                onCancel: { showReportIdeaSheet = false }
+            )
+        }
     }
     
     private func performDelete() {
@@ -124,6 +174,131 @@ struct IdeaDetailView: View {
         }
     }
     
+    private var progressBarColor: Color {
+        if let v = store.currentAccount?.auraVariant {
+            return AuraConfig.from(variant: v).colors.0
+        }
+        if let p = store.currentAccount?.auraPaletteIndex {
+            return AuraConfig.fromLegacy(paletteIndex: p).colors.0
+        }
+        return Color.white.opacity(0.9)
+    }
+    
+    private func completionProgressSection(idea: Idea) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Progress")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                Spacer()
+                Text("\(idea.completionPercentage)%")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.white.opacity(0.15))
+                        .frame(height: 10)
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(progressBarColor)
+                        .frame(width: max(0, geo.size.width * CGFloat(idea.completionPercentage) / 100), height: 10)
+                }
+            }
+            .frame(height: 10)
+            if canDelete {
+                Slider(value: Binding(
+                    get: { Double(idea.completionPercentage) },
+                    set: { store.setIdeaCompletionPercentage(ideaId: idea.id, percentage: Int($0)) }
+                ), in: 0...100, step: 5)
+                .tint(progressBarColor)
+                Text("Set how complete this is. Still accepting until 100% or you mark as finished.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
+            } else {
+                if idea.completionPercentage < 100 {
+                    Text("Author is still accepting contributions.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func ideaRatingRow(idea: Idea) -> some View {
+        let myRating = store.myIdeaRatings[idea.id] ?? 0
+        return HStack(alignment: .center, spacing: 16) {
+            if idea.ratingCount > 0, let avg = idea.averageRating {
+                HStack(spacing: 4) {
+                    Text(String(format: "%.1f", avg))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white)
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.yellow)
+                    Text("(\(idea.ratingCount))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+            if store.currentUserId != nil, !store.isCurrentUserIdeaAuthor(ideaId: idea.id) {
+                HStack(spacing: 2) {
+                    Text("Your rating:")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.7))
+                    ForEach(1...5, id: \.self) { star in
+                        Button {
+                            store.setIdeaRating(ideaId: idea.id, rating: star)
+                        } label: {
+                            Image(systemName: myRating >= star ? "star.fill" : "star")
+                                .font(.system(size: 14))
+                                .foregroundStyle(myRating >= star ? Color.yellow : Color.white.opacity(0.4))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if myRating > 0 {
+                        Button {
+                            store.clearIdeaRating(ideaId: idea.id)
+                        } label: {
+                            Text("Clear")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+    
+    @ViewBuilder
+    private func ideaBodyContent(idea: Idea) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(idea.content)
+                .font(.system(size: 18))
+                .lineSpacing(6)
+                .foregroundStyle(.white)
+            if let voicePath = idea.voicePath {
+                VoicePlaybackView(storagePath: voicePath)
+                    .environmentObject(store)
+            }
+            if !idea.attachments.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Attachments")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.92))
+                    ForEach(idea.attachments) { att in
+                        AttachmentRowView(ideaId: idea.id, attachment: att)
+                            .environmentObject(store)
+                    }
+                }
+            }
+        }
+    }
+    
     private func detailContent(idea: Idea) -> some View {
         
         ZStack {
@@ -133,6 +308,19 @@ struct IdeaDetailView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack {
                         categoryTag(categoryId: idea.categoryId)
+                        if idea.isFinished {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 11))
+                                Text("Finished")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.2))
+                            .clipShape(Capsule())
+                        }
                         Spacer()
                         Text(idea.timeAgo)
                             .font(.system(size: 11))
@@ -141,26 +329,15 @@ struct IdeaDetailView: View {
 
                     authorLine(idea: idea)
 
-                    Text(idea.content)
-                        .font(.system(size: 18))
-                        .lineSpacing(6)
-                        .foregroundStyle(.white)
+                    ideaRatingRow(idea: idea)
+
+                    completionProgressSection(idea: idea)
+
+                    ideaBodyContent(idea: idea)
                     
-                    if let voicePath = idea.voicePath {
-                        VoicePlaybackView(storagePath: voicePath)
+                    if idea.drawingPath != nil || idea.contributions.contains(where: { $0.drawingPath != nil }) {
+                        IdeaDrawingSectionView(idea: idea)
                             .environmentObject(store)
-                    }
-                    
-                    if !idea.attachments.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Attachments")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.92))
-                            ForEach(idea.attachments) { att in
-                                AttachmentRowView(ideaId: idea.id, attachment: att)
-                                    .environmentObject(store)
-                            }
-                        }
                     }
                     
                     if !idea.contributions.isEmpty {
@@ -197,30 +374,66 @@ struct IdeaDetailView: View {
                         }
                     }
                     
+                    if !idea.isFinished, !store.isCurrentUserIdeaAuthor(ideaId: idea.id) {
                     VStack(alignment: .leading, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Add your completion")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.92))
-                            Picker("Visibility", selection: $completionIsPublic) {
-                                Text("Public").tag(true)
-                                Text("Private").tag(false)
-                            }
-                            .pickerStyle(.segmented)
-                            .colorScheme(.dark)
+                        Text("Add your completion")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.92))
+                        Picker("Visibility", selection: $completionIsPublic) {
+                            Text("Public").tag(true)
+                            Text("Private").tag(false)
                         }
-                        TextEditor(text: $completionText)
-                            .font(.system(size: 16))
-                            .foregroundStyle(.white)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 100)
-                            .padding(16)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
-                            .focused($focusField)
-                        completionVoiceRow
-                        completionAttachmentsSection
+                        .pickerStyle(.segmented)
+                        .colorScheme(.dark)
+                        VStack(alignment: .leading, spacing: 0) {
+                            TextEditor(text: $completionText)
+                                .font(.system(size: 16))
+                                .foregroundStyle(.white)
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 100)
+                                .padding(16)
+                                .focused($focusField)
+                            HStack(spacing: 16) {
+                                completionVoiceIconButton
+                                PhotosPicker(
+                                    selection: $selectedCompletionPhotoItems,
+                                    maxSelectionCount: 5,
+                                    matching: .images
+                                ) {
+                                    Image(systemName: "photo.on.rectangle.angled")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                }
+                                .buttonStyle(.plain)
+                                Button {
+                                    showCompletionFileImporter = true
+                                } label: {
+                                    Image(systemName: "doc.badge.plus")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                }
+                                .buttonStyle(.plain)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.06))
+                            if !selectedCompletionPhotoItems.isEmpty || !completionPendingFiles.isEmpty {
+                                completionSelectedAttachmentsRow
+                            }
+                        }
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
+                        if idea.drawingPath != nil || idea.contributions.contains(where: { $0.drawingPath != nil }) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Continue the drawing")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                DrawingCanvasView(drawing: $completionDrawing, readOnly: false)
+                                    .frame(height: 180)
+                            }
+                        }
                     }
                     .fileImporter(
                         isPresented: $showCompletionFileImporter,
@@ -249,8 +462,33 @@ struct IdeaDetailView: View {
                     .opacity(completionHasContent ? 1 : 0.6)
                     
                     Color.clear.frame(height: 40)
+                    } else if !idea.isFinished, store.isCurrentUserIdeaAuthor(ideaId: idea.id) {
+                        Text("You started this idea. Others can add completions.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                        Color.clear.frame(height: 40)
+                    } else {
+                        Text("This idea is finished. No new completions.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                        Color.clear.frame(height: 40)
+                    }
                 }
                 .padding(24)
+            }
+            .task(id: idea.id) {
+                guard !idea.isFinished,
+                      idea.drawingPath != nil || idea.contributions.contains(where: { $0.drawingPath != nil })
+                else { return }
+                let merged = await store.loadMergedDrawing(idea: idea)
+                await MainActor.run {
+                    completionDrawing = merged
+                    completionDrawingBase = merged
+                }
             }
         }
     }
@@ -260,77 +498,7 @@ struct IdeaDetailView: View {
             || completionRecordedVoiceURL != nil
             || !selectedCompletionPhotoItems.isEmpty
             || !completionPendingFiles.isEmpty
-    }
-    
-    private var completionAttachmentsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Attachments")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
-            HStack(spacing: 12) {
-                PhotosPicker(
-                    selection: $selectedCompletionPhotoItems,
-                    maxSelectionCount: 5,
-                    matching: .images
-                ) {
-                    Label("Photos", systemImage: "photo.on.rectangle.angled")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.95))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                Button {
-                    showCompletionFileImporter = true
-                } label: {
-                    Label("Files", systemImage: "doc.badge.plus")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.95))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-            }
-            if !selectedCompletionPhotoItems.isEmpty || !completionPendingFiles.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(selectedCompletionPhotoItems.enumerated()), id: \.offset) { _, _ in
-                        HStack {
-                            Image(systemName: "photo").foregroundStyle(.white.opacity(0.8))
-                            Text("Photo").font(.system(size: 12)).foregroundStyle(.white)
-                            Spacer()
-                            Button {
-                                selectedCompletionPhotoItems.removeAll()
-                            } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.6))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(8)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    ForEach(completionPendingFiles) { file in
-                        HStack {
-                            Image(systemName: file.kind.iconName).foregroundStyle(.white.opacity(0.8))
-                            Text(file.displayName).font(.system(size: 12)).lineLimit(1).foregroundStyle(.white)
-                            Spacer()
-                            Button {
-                                completionPendingFiles.removeAll { $0.id == file.id }
-                                try? FileManager.default.removeItem(at: file.localURL)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.6))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(8)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                }
-            }
-        }
+            || completionDrawing.strokes.count > completionDrawingBase.strokes.count
     }
     
     private func handleCompletionFileImport(result: Result<[URL], Error>) {
@@ -357,33 +525,30 @@ struct IdeaDetailView: View {
         return .document
     }
     
-    private var completionVoiceRow: some View {
-        HStack(spacing: 12) {
+    private var completionVoiceIconButton: some View {
+        Group {
             if completionVoiceRecorder.isRecording {
                 Button {
                     completionRecordedVoiceURL = completionVoiceRecorder.stop()
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 22))
-                        Text("Stop")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    .foregroundStyle(.red)
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.red)
                 }
                 .buttonStyle(.plain)
-                Text("Recording…")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.white.opacity(0.8))
             } else if completionRecordedVoiceURL != nil {
-                Text("Voice recorded")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.white.opacity(0.9))
                 Button {
                     completionRecordedVoiceURL = nil
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Color.white.opacity(0.7))
+                    ZStack(alignment: .bottomTrailing) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white.opacity(0.9))
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 2, y: 2)
+                    }
                 }
                 .buttonStyle(.plain)
             } else {
@@ -393,21 +558,53 @@ struct IdeaDetailView: View {
                         _ = try? completionVoiceRecorder.start()
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 18))
-                        Text("Record voice")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white.opacity(0.9))
                 }
                 .buttonStyle(.plain)
             }
-            Spacer()
         }
-        .padding(12)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var completionSelectedAttachmentsRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(selectedCompletionPhotoItems.enumerated()), id: \.offset) { _, _ in
+                HStack {
+                    Image(systemName: "photo").foregroundStyle(.white.opacity(0.8))
+                    Text("Photo").font(.system(size: 12)).foregroundStyle(.white)
+                    Spacer()
+                    Button {
+                        selectedCompletionPhotoItems.removeAll()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(8)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            ForEach(completionPendingFiles) { file in
+                HStack {
+                    Image(systemName: file.kind.iconName).foregroundStyle(.white.opacity(0.8))
+                    Text(file.displayName).font(.system(size: 12)).lineLimit(1).foregroundStyle(.white)
+                    Spacer()
+                    Button {
+                        completionPendingFiles.removeAll { $0.id == file.id }
+                        try? FileManager.default.removeItem(at: file.localURL)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(8)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
     }
     
     private func categoryTag(categoryId: UUID) -> some View {
@@ -429,7 +626,11 @@ struct IdeaDetailView: View {
         let voiceURL = completionRecordedVoiceURL
         let photoItems = selectedCompletionPhotoItems
         let pendingFiles = completionPendingFiles
-        let hasAsync = voiceURL != nil || !photoItems.isEmpty || !pendingFiles.isEmpty
+        let drawingToUpload = completionDrawing
+        let baseStrokeCount = completionDrawingBase.strokes.count
+        let newStrokes = Array(drawingToUpload.strokes.dropFirst(baseStrokeCount))
+        let drawingToUploadDelta = newStrokes.isEmpty ? nil : PKDrawing(strokes: newStrokes)
+        let hasAsync = voiceURL != nil || !photoItems.isEmpty || !pendingFiles.isEmpty || drawingToUploadDelta != nil
         if hasAsync {
             Task {
                 do {
@@ -437,6 +638,10 @@ struct IdeaDetailView: View {
                     var voicePath: String? = nil
                     if let url = voiceURL {
                         voicePath = try await store.uploadVoiceForContribution(ideaId: ideaId, fileURL: url)
+                    }
+                    var drawingPath: String? = nil
+                    if let delta = drawingToUploadDelta, !delta.strokes.isEmpty, let data = try? delta.dataRepresentation() {
+                        drawingPath = try await store.uploadDrawingForContribution(ideaId: ideaId, contributionId: contribId, data: data)
                     }
                     var filesToUpload: [(url: URL, displayName: String, kind: AttachmentKind)] = pendingFiles.map { ($0.localURL, $0.displayName, $0.kind) }
                     for item in photoItems {
@@ -450,10 +655,13 @@ struct IdeaDetailView: View {
                         }
                     }
                     let attachments = try await store.uploadCompletionAttachments(ideaId: ideaId, contributionId: contribId, files: filesToUpload)
+                    let contentForContrib = trimmed.isEmpty && voicePath == nil && attachments.isEmpty && drawingPath == nil ? "Drawing" : (trimmed.isEmpty && drawingPath != nil ? "Drawing" : (trimmed.isEmpty ? "Attachment" : trimmed))
                     await MainActor.run {
-                        store.addContribution(ideaId: ideaId, content: trimmed.isEmpty && voicePath == nil && attachments.isEmpty ? "Attachment" : (trimmed.isEmpty ? "Attachment" : trimmed), isPublic: completionIsPublic, voicePath: voicePath, attachments: attachments, contributionId: contribId)
+                        store.addContribution(ideaId: ideaId, content: contentForContrib, isPublic: completionIsPublic, voicePath: voicePath, attachments: attachments, drawingPath: drawingPath, contributionId: contribId)
                         completionRecordedVoiceURL = nil
                         completionText = ""
+                        completionDrawing = PKDrawing()
+                        completionDrawingBase = PKDrawing()
                         selectedCompletionPhotoItems = []
                         completionPendingFiles.forEach { try? FileManager.default.removeItem(at: $0.localURL) }
                         completionPendingFiles = []
@@ -489,11 +697,48 @@ struct CompletionRowView: View {
     @StateObject private var commentVoiceRecorder = VoiceRecorder()
     @StateObject private var editVoiceRecorder = VoiceRecorder()
     @State private var showDeleteContribConfirm = false
+    @State private var showRemoveContribConfirm = false
     @State private var showEditContrib = false
     @State private var editContribDraft = ""
     @State private var editContribVoiceURL: URL?
+    @State private var showReportContribSheet = false
     
     private var canEditContrib: Bool { store.canCurrentUserEditContribution(contribution) }
+    private var isIdeaAuthor: Bool { store.isCurrentUserIdeaAuthor(ideaId: ideaId) }
+    /// True if this contribution was posted by the current user (so idea author can’t rate their own completion).
+    private var isOwnContribution: Bool {
+        if let cid = contribution.authorId, let uid = store.currentUserId { return cid == uid }
+        return contribution.authorDisplayName == store.currentUserName
+    }
+
+    private var contributionRatingRow: some View {
+        HStack(spacing: 2) {
+            Text("Rate:")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.7))
+            ForEach(1...5, id: \.self) { star in
+                Button {
+                    store.setContributionRating(ideaId: ideaId, contributionId: contribution.id, rating: star)
+                } label: {
+                    Image(systemName: (contribution.authorRating ?? 0) >= star ? "star.fill" : "star")
+                        .font(.system(size: 14))
+                        .foregroundStyle((contribution.authorRating ?? 0) >= star ? Color.yellow : Color.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+            }
+            if contribution.authorRating != nil {
+                Button {
+                    store.clearContributionRating(ideaId: ideaId, contributionId: contribution.id)
+                } label: {
+                    Text("Clear")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 4)
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -534,18 +779,46 @@ struct CompletionRowView: View {
                                 .foregroundStyle(.white.opacity(0.5))
                         }
                     }
+                    if store.isCurrentUserIdeaAuthor(ideaId: ideaId), !isOwnContribution {
+                        contributionRatingRow
+                    } else if let rating = contribution.authorRating {
+                        HStack(spacing: 2) {
+                            ForEach(1...5, id: \.self) { star in
+                                Image(systemName: star <= rating ? "star.fill" : "star")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(star <= rating ? Color.yellow : Color.white.opacity(0.3))
+                            }
+                            Text("Idea author’s rating")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .padding(.leading, 4)
+                        }
+                        .padding(.top, 4)
+                    }
                 }
                 Spacer()
-                if canEditContrib {
+                if canEditContrib || isIdeaAuthor || (store.currentUserId != nil && !isOwnContribution) {
                     Menu {
-                        Button(role: .destructive) {
-                            showDeleteContribConfirm = true
-                        } label: { Label("Delete", systemImage: "trash") }
-                        Button {
-                            editContribDraft = contribution.content
-                            editContribVoiceURL = nil
-                            showEditContrib = true
-                        } label: { Label("Edit", systemImage: "pencil") }
+                        if store.currentUserId != nil, !isOwnContribution {
+                            Button {
+                                showReportContribSheet = true
+                            } label: { Label("Report", systemImage: "exclamationmark.triangle") }
+                        }
+                        if isIdeaAuthor {
+                            Button(role: .destructive) {
+                                showRemoveContribConfirm = true
+                            } label: { Label("Remove from idea", systemImage: "xmark.circle") }
+                        }
+                        if canEditContrib {
+                            Button(role: .destructive) {
+                                showDeleteContribConfirm = true
+                            } label: { Label("Delete", systemImage: "trash") }
+                            Button {
+                                editContribDraft = contribution.content
+                                editContribVoiceURL = nil
+                                showEditContrib = true
+                            } label: { Label("Edit", systemImage: "pencil") }
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.system(size: 16))
@@ -635,8 +908,26 @@ struct CompletionRowView: View {
         } message: {
             Text("This cannot be undone.")
         }
+        .alert("Remove this contribution?", isPresented: $showRemoveContribConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                store.removeContribution(ideaId: ideaId, contributionId: contribution.id)
+            }
+        } message: {
+            Text("It will be removed from your idea. The contributor can still see it was removed.")
+        }
         .sheet(isPresented: $showEditContrib) {
             editContributionSheet
+        }
+        .sheet(isPresented: $showReportContribSheet) {
+            ReportReasonSheet(
+                title: "Report contribution",
+                onSubmit: { reason, details in
+                    store.reportContribution(ideaId: ideaId, contributionId: contribution.id, reason: reason, details: details)
+                    showReportContribSheet = false
+                },
+                onCancel: { showReportContribSheet = false }
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.06))
@@ -1155,6 +1446,68 @@ private struct QuickLookPreviewView: UIViewControllerRepresentable {
         init(url: URL) { self.url = url }
         func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
         func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as QLPreviewItem }
+    }
+}
+
+// MARK: - Report reason sheet (idea or contribution)
+struct ReportReasonSheet: View {
+    let title: String
+    let onSubmit: (String, String?) -> Void
+    let onCancel: () -> Void
+    
+    private static let reasons: [(value: String, label: String)] = [
+        ("spam", "Spam"),
+        ("harmful", "Harmful"),
+        ("harassment", "Harassment"),
+        ("other", "Other")
+    ]
+    
+    @State private var selectedReason = "spam"
+    @State private var detailsText = ""
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(white: 0.12).ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Reason")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                    Picker("Reason", selection: $selectedReason) {
+                        ForEach(Self.reasons, id: \.value) { r in
+                            Text(r.label).tag(r.value)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .colorScheme(.dark)
+                    TextField("Details (optional)", text: $detailsText, axis: .vertical)
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .lineLimit(3...6)
+                        .padding(12)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Spacer()
+                }
+                .padding(24)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onCancel() }
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Submit") {
+                        onSubmit(selectedReason, detailsText.isEmpty ? nil : detailsText)
+                    }
+                    .foregroundStyle(.white)
+                }
+            }
+        }
     }
 }
 

@@ -24,10 +24,6 @@ struct AuthView: View {
 
                 VStack(spacing: 32) {
                     Spacer()
-                    Image("Logo")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 80, height: 80)
                     Text("UNFIN")
                         .font(.system(size: 28, weight: .semibold))
                         .tracking(-0.5)

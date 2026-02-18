@@ -177,6 +177,11 @@ struct Contribution: Codable, Identifiable {
     var authorId: UUID?
     var editedAt: Date?
     var attachments: [Attachment]
+    /// Optional PencilKit drawing (storage path) for this completion layer.
+    var drawingPath: String?
+    /// 1–5 star rating from the idea author for this contribution.
+    var authorRating: Int?
+    var authorRatingAt: Date?
     
     init(
         id: UUID = UUID(),
@@ -190,7 +195,10 @@ struct Contribution: Codable, Identifiable {
         voicePath: String? = nil,
         authorId: UUID? = nil,
         editedAt: Date? = nil,
-        attachments: [Attachment] = []
+        attachments: [Attachment] = [],
+        drawingPath: String? = nil,
+        authorRating: Int? = nil,
+        authorRatingAt: Date? = nil
     ) {
         self.id = id
         self.authorDisplayName = authorDisplayName
@@ -204,6 +212,9 @@ struct Contribution: Codable, Identifiable {
         self.authorId = authorId
         self.editedAt = editedAt
         self.attachments = attachments
+        self.drawingPath = drawingPath
+        self.authorRating = authorRating
+        self.authorRatingAt = authorRatingAt
     }
     
     func count(for type: String) -> Int {
@@ -214,7 +225,7 @@ struct Contribution: Codable, Identifiable {
     var totalReactionCount: Int { reactions.count }
     
     enum CodingKeys: String, CodingKey {
-        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, reactions, comments, voicePath, authorId, editedAt, attachments
+        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, reactions, comments, voicePath, authorId, editedAt, attachments, drawingPath, authorRating, authorRatingAt
     }
     
     init(from decoder: Decoder) throws {
@@ -236,6 +247,9 @@ struct Contribution: Codable, Identifiable {
         authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
         editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
         attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
+        drawingPath = try c.decodeIfPresent(String.self, forKey: .drawingPath)
+        authorRating = try c.decodeIfPresent(Int.self, forKey: .authorRating)
+        authorRatingAt = try c.decodeIfPresent(Date.self, forKey: .authorRatingAt)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -252,6 +266,9 @@ struct Contribution: Codable, Identifiable {
         try c.encodeIfPresent(authorId, forKey: .authorId)
         try c.encodeIfPresent(editedAt, forKey: .editedAt)
         try c.encode(attachments, forKey: .attachments)
+        try c.encodeIfPresent(drawingPath, forKey: .drawingPath)
+        try c.encodeIfPresent(authorRating, forKey: .authorRating)
+        try c.encodeIfPresent(authorRatingAt, forKey: .authorRatingAt)
     }
 }
 
@@ -267,37 +284,63 @@ struct Idea: Codable, Identifiable {
     var content: String
     /// Optional storage path for voice-recorded idea (e.g. "ideas/<id>/voice.m4a").
     var voicePath: String?
+    /// Optional storage path for PencilKit drawing (e.g. "ideas/<id>/drawing.pkdrawing"). Start an idea visually.
+    var drawingPath: String?
     /// Stable author identity; use this (not display name) to determine "my ideas" so they persist after name change.
     var authorId: UUID?
     var authorDisplayName: String
     var createdAt: Date
     var contributions: [Contribution]
     var attachments: [Attachment]
+    /// When set, the idea author has marked this idea as finished (no new completions).
+    var finishedAt: Date?
+    /// When true, content is shown blurred until the reader rubs to reveal (sensitive/triggering).
+    var isSensitive: Bool
+    /// Average 1–5 star rating from readers (idea maker quality). Nil if no ratings.
+    var averageRating: Double?
+    /// Number of ratings received.
+    var ratingCount: Int
+    /// 0–100: idea author’s view of how complete this is. Still accepting until 100% or marked finished.
+    var completionPercentage: Int
     
     init(
         id: UUID = UUID(),
         categoryId: UUID,
         content: String,
         voicePath: String? = nil,
+        drawingPath: String? = nil,
         authorId: UUID? = nil,
         authorDisplayName: String,
         createdAt: Date = Date(),
         contributions: [Contribution] = [],
-        attachments: [Attachment] = []
+        attachments: [Attachment] = [],
+        finishedAt: Date? = nil,
+        isSensitive: Bool = false,
+        averageRating: Double? = nil,
+        ratingCount: Int = 0,
+        completionPercentage: Int = 0
     ) {
         self.id = id
         self.categoryId = categoryId
         self.content = content
         self.voicePath = voicePath
+        self.drawingPath = drawingPath
         self.authorId = authorId
         self.authorDisplayName = authorDisplayName
         self.createdAt = createdAt
         self.contributions = contributions
         self.attachments = attachments
+        self.finishedAt = finishedAt
+        self.isSensitive = isSensitive
+        self.averageRating = averageRating
+        self.ratingCount = ratingCount
+        self.completionPercentage = min(100, max(0, completionPercentage))
     }
     
+    var isFinished: Bool { finishedAt != nil }
+    
     enum CodingKeys: String, CodingKey {
-        case id, categoryId, category, content, voicePath, authorId, authorDisplayName, createdAt, contributions, attachments
+        case id, categoryId, category, content, voicePath, drawingPath, authorId, authorDisplayName, createdAt, contributions, attachments, finishedAt, isSensitive, averageRating, ratingCount, completionPercentage
     }
     
     init(from decoder: Decoder) throws {
@@ -312,11 +355,17 @@ struct Idea: Codable, Identifiable {
         }
         content = try c.decode(String.self, forKey: .content)
         voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
+        drawingPath = try c.decodeIfPresent(String.self, forKey: .drawingPath)
         authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
         authorDisplayName = try c.decode(String.self, forKey: .authorDisplayName)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         contributions = try c.decode([Contribution].self, forKey: .contributions)
         attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
+        finishedAt = try c.decodeIfPresent(Date.self, forKey: .finishedAt)
+        isSensitive = try c.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
+        averageRating = try c.decodeIfPresent(Double.self, forKey: .averageRating)
+        ratingCount = try c.decodeIfPresent(Int.self, forKey: .ratingCount) ?? 0
+        completionPercentage = min(100, max(0, try c.decodeIfPresent(Int.self, forKey: .completionPercentage) ?? 0))
     }
     
     func encode(to encoder: Encoder) throws {
@@ -325,11 +374,17 @@ struct Idea: Codable, Identifiable {
         try c.encode(categoryId, forKey: .categoryId)
         try c.encode(content, forKey: .content)
         try c.encodeIfPresent(voicePath, forKey: .voicePath)
+        try c.encodeIfPresent(drawingPath, forKey: .drawingPath)
         try c.encodeIfPresent(authorId, forKey: .authorId)
         try c.encode(authorDisplayName, forKey: .authorDisplayName)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(contributions, forKey: .contributions)
         try c.encode(attachments, forKey: .attachments)
+        try c.encodeIfPresent(finishedAt, forKey: .finishedAt)
+        try c.encode(isSensitive, forKey: .isSensitive)
+        try c.encodeIfPresent(averageRating, forKey: .averageRating)
+        try c.encode(ratingCount, forKey: .ratingCount)
+        try c.encode(completionPercentage, forKey: .completionPercentage)
     }
     
     /// Participant display names, author first, then contributors (unique, order preserved). Use for avatar list.

@@ -30,22 +30,56 @@ struct IdeaCardView: View {
                             .textCase(.uppercase)
                             .tracking(0.5)
                             .foregroundStyle(mutedFg)
+                        if idea.isFinished {
+                            Text("Finished")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.green.opacity(0.2))
+                                .clipShape(Capsule())
+                        }
+                        if !idea.isFinished && idea.completionPercentage > 0 {
+                            Text("\(idea.completionPercentage)%")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(secondaryFg)
+                        }
                     }
                     Spacer()
+                    if idea.ratingCount > 0, let avg = idea.averageRating {
+                        HStack(spacing: 2) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.yellow)
+                            Text(String(format: "%.1f", avg))
+                                .font(.system(size: 11))
+                                .foregroundStyle(secondaryFg)
+                        }
+                        .padding(.trailing, 8)
+                    }
                     Text(idea.timeAgo)
-                        .font(.system(size: 11))
-                        .foregroundStyle(secondaryFg)
+                            .font(.system(size: 11))
+                            .foregroundStyle(secondaryFg)
                 }
                 
                 cardContent
                 
-                if idea.voicePath != nil || !idea.attachments.isEmpty {
+                if idea.voicePath != nil || idea.drawingPath != nil || !idea.attachments.isEmpty {
                     HStack(spacing: 10) {
                         if idea.voicePath != nil {
                             HStack(spacing: 4) {
                                 Image(systemName: "mic.fill")
                                     .font(.system(size: 11))
                                 Text("Voice")
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundStyle(secondaryFg)
+                        }
+                        if idea.drawingPath != nil {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pencil.tip.crop.circle")
+                                    .font(.system(size: 11))
+                                Text("Drawing")
                                     .font(.system(size: 11))
                             }
                             .foregroundStyle(secondaryFg)
@@ -116,7 +150,8 @@ struct IdeaCardView: View {
                 let avatar = AuraAvatarView(
                     size: 24,
                     auraVariant: variant,
-                    legacyPaletteIndex: dest.displayName == store.currentUserName ? store.currentAccount?.auraPaletteIndex : nil
+                    legacyPaletteIndex: dest.displayName == store.currentUserName ? store.currentAccount?.auraPaletteIndex : nil,
+                    fallbackDisplayName: dest.displayName
                 )
                 .overlay(Circle().stroke(primaryFg.opacity(0.15), lineWidth: 1))
                 if let onOpen = onOpenUserProfile {

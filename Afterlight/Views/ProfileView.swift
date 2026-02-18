@@ -32,6 +32,19 @@ struct ProfileView: View {
         }.count
     }
 
+    /// (Contribution, parent Idea) for current user's contributions, for listing.
+    private var myContributionsWithIdeas: [(contribution: Contribution, idea: Idea)] {
+        guard let userId = store.currentUserId else { return [] }
+        return store.ideas.flatMap { idea in
+            idea.contributions.compactMap { c -> (Contribution, Idea)? in
+                let isMine = c.authorId == userId || c.authorDisplayName == store.currentUserName
+                return isMine ? (c, idea) : nil
+            }
+        }
+    }
+
+    enum ProfileSegment { case ideas, contributions }
+    @State private var selectedProfileSegment: ProfileSegment = .ideas
     @State private var profilePath = NavigationPath()
     @State private var showChangeAura = false
     @State private var showSettings = false
@@ -45,7 +58,11 @@ struct ProfileView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
                             header
-                            myIdeasSection
+                            if selectedProfileSegment == .ideas {
+                                myIdeasSection
+                            } else {
+                                myContributionsSection
+                            }
                         }
                     }
                 }
@@ -76,6 +93,7 @@ struct ProfileView: View {
         }
         .onAppear {
             displayName = store.currentUserName
+            store.refreshUserProfileIfNeeded()
         }
     }
     
@@ -140,7 +158,8 @@ struct ProfileView: View {
                             AuraAvatarView(
                                 size: 52,
                                 auraVariant: store.currentAccount?.auraVariant,
-                                legacyPaletteIndex: store.currentAccount?.auraPaletteIndex
+                                legacyPaletteIndex: store.currentAccount?.auraPaletteIndex,
+                                fallbackDisplayName: store.currentUserName
                             )
                             Image(systemName: "pencil.circle.fill")
                                 .font(.system(size: 20))
@@ -154,16 +173,6 @@ struct ProfileView: View {
                         Text(store.currentUserName)
                             .font(.system(size: 24, weight: .medium))
                             .foregroundStyle(primaryFg)
-                        if store.currentStreak > 0 {
-                            HStack(spacing: 5) {
-                                Image(systemName: "flame.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.orange)
-                                Text("\(store.currentStreak) day streak")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(secondaryFg)
-                            }
-                        }
                         Button {
                             editingName = true
                         } label: {
@@ -177,33 +186,85 @@ struct ProfileView: View {
                 .padding(.horizontal, 24)
             }
 
-            profileStats(ideasCount: myIdeas.count, contributionsCount: myContributionsCount)
+            profileStats(
+                ideasCount: myIdeas.count,
+                contributionsCount: myContributionsCount,
+                selectedSegment: $selectedProfileSegment,
+                averageContributionRating: store.averageRatingForUser(displayName: store.currentUserName, authorId: store.currentUserId),
+                averageIdeaRating: store.averageIdeaRatingForUser(displayName: store.currentUserName, authorId: store.currentUserId)
+            )
             
-            Text("Ideas you started")
+            Text(selectedProfileSegment == .ideas ? "Ideas you started" : "Your contributions")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(secondaryFg)
-        .padding(.horizontal, 24)
-            .padding(.top, 8)
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
         }
     }
 
-    private func profileStats(ideasCount: Int, contributionsCount: Int) -> some View {
+    private func profileStats(ideasCount: Int, contributionsCount: Int, selectedSegment: Binding<ProfileSegment>, averageContributionRating: Double? = nil, averageIdeaRating: Double? = nil) -> some View {
         HStack(spacing: 16) {
-            HStack(spacing: 6) {
-                Text("\(ideasCount)")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(primaryFg)
-                Text("ideas shared")
-                    .font(.system(size: 13))
-                    .foregroundStyle(secondaryFg)
+            Button {
+                selectedSegment.wrappedValue = .ideas
+            } label: {
+                HStack(spacing: 6) {
+                    Text("\(ideasCount)")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(primaryFg)
+                    Text("ideas shared")
+                        .font(.system(size: 13))
+                        .foregroundStyle(secondaryFg)
+                }
             }
-            HStack(spacing: 6) {
-                Text("\(contributionsCount)")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(primaryFg)
-                Text("contributions")
-                    .font(.system(size: 13))
-                    .foregroundStyle(secondaryFg)
+            .buttonStyle(.plain)
+            Button {
+                selectedSegment.wrappedValue = .contributions
+            } label: {
+                HStack(spacing: 6) {
+                    Text("\(contributionsCount)")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(primaryFg)
+                    Text("contributions")
+                        .font(.system(size: 13))
+                        .foregroundStyle(secondaryFg)
+                }
+            }
+            .buttonStyle(.plain)
+            if store.currentStreak > 0 {
+                HStack(spacing: 5) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.orange)
+                    Text("\(store.currentStreak) day streak")
+                        .font(.system(size: 13))
+                        .foregroundStyle(secondaryFg)
+                }
+            }
+            if let avg = averageContributionRating {
+                HStack(spacing: 4) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.yellow)
+                    Text(String(format: "%.1f", avg))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(primaryFg)
+                    Text("completions")
+                        .font(.system(size: 11))
+                        .foregroundStyle(secondaryFg)
+                }
+            }
+            if let avg = averageIdeaRating {
+                HStack(spacing: 4) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.yellow)
+                    Text(String(format: "%.1f", avg))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(primaryFg)
+                    Text("ideas")
+                        .font(.system(size: 11))
+                        .foregroundStyle(secondaryFg)
+                }
             }
         }
         .padding(.horizontal, 24)
@@ -228,6 +289,47 @@ struct ProfileView: View {
                     }) {
                         profilePath.append(idea.id)
                     }
+                }
+                .padding(.horizontal, 24)
+            }
+            Color.clear.frame(height: 120)
+        }
+    }
+
+    private var myContributionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if myContributionsWithIdeas.isEmpty {
+                Text("You haven’t added any completions yet. Open an idea and add yours.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(secondaryFg)
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(primaryFg.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .padding(.horizontal, 24)
+            } else {
+                ForEach(Array(myContributionsWithIdeas.enumerated()), id: \.element.contribution.id) { _, pair in
+                    Button {
+                        profilePath.append(pair.idea.id)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            let preview = pair.contribution.content.isEmpty ? "Voice or drawing" : String(pair.contribution.content.prefix(120))
+                            if preview.count == 120 { Text(preview + "…") } else { Text(preview) }
+                                .font(.system(size: 15))
+                                .foregroundStyle(primaryFg)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Text("Added to: \(String(pair.idea.content.prefix(60)))\(pair.idea.content.count > 60 ? "…" : "")")
+                                .font(.system(size: 12))
+                                .foregroundStyle(secondaryFg)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(primaryFg.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 24)
             }

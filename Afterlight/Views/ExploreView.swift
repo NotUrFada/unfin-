@@ -10,9 +10,27 @@ struct ExploreView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Binding var showCreateIdea: Bool
     @State private var explorePath = NavigationPath()
+    @State private var searchText = ""
 
     private var isLight: Bool { colorScheme == .light }
     private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+
+    private var visibleIdeas: [Idea] {
+        store.ideas.filter { !store.hiddenIdeaIds.contains($0.id) }
+    }
+
+    private var searchResults: [Idea] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return [] }
+        return visibleIdeas.filter {
+            $0.content.lowercased().contains(q)
+                || store.categoryDisplayName(byId: $0.categoryId).lowercased().contains(q)
+        }
+    }
+
+    private var randomIdea: Idea? {
+        visibleIdeas.randomElement()
+    }
 
     var body: some View {
         NavigationStack(path: $explorePath) {
@@ -20,7 +38,13 @@ struct ExploreView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         header
-                        categoryGrid
+                        searchBar
+                        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            searchResultsSection
+                        } else {
+                            discoverySection
+                            categoryGrid
+                        }
                     }
                     .padding(.bottom, 100)
                 }
@@ -58,13 +82,90 @@ struct ExploreView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 56)
 
-            Text("Browse ideas by category.")
+            Text("Discover ideas that need your help.")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(primaryFg.opacity(0.95))
                 .padding(.horizontal, 24)
                 .padding(.top, 4)
-                .padding(.bottom, 24)
+                .padding(.bottom, 8)
         }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16))
+                .foregroundStyle(primaryFg.opacity(0.6))
+            TextField("Search ideas or categories", text: $searchText)
+                .font(.system(size: 16))
+                .foregroundStyle(primaryFg)
+                .autocorrectionDisabled()
+        }
+        .padding(14)
+        .background(primaryFg.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
+    }
+
+    private var searchResultsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Results")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(primaryFg.opacity(0.9))
+                .padding(.horizontal, 24)
+            if searchResults.isEmpty {
+                Text("No ideas match \"\(searchText)\".")
+                    .font(.system(size: 15))
+                    .foregroundStyle(primaryFg.opacity(0.8))
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(primaryFg.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .padding(.horizontal, 24)
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(searchResults) { idea in
+                        IdeaCardView(idea: idea, onOpenUserProfile: { name, authorId in
+                            explorePath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                        }) {
+                            explorePath.append(idea.id)
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+    }
+
+    private var discoverySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let random = randomIdea {
+                Button {
+                    explorePath.append(random.id)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Surprise me")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("Discover a random idea")
+                                .font(.system(size: 13))
+                                .foregroundStyle(primaryFg.opacity(0.8))
+                        }
+                        Spacer()
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(primaryFg.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(primaryFg.opacity(0.12), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 8)
     }
     
     private var categoryGrid: some View {
@@ -74,12 +175,6 @@ struct ExploreView: View {
                     explorePath.append(category)
                 } label: {
                     HStack {
-                        Image(systemName: iconForCategory(category))
-                            .font(.system(size: 22))
-                            .foregroundStyle(primaryFg.opacity(0.9))
-                            .frame(width: 44, height: 44)
-                            .background(primaryFg.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(category.displayName)
                                 .font(.system(size: 18, weight: .semibold))
@@ -89,11 +184,9 @@ struct ExploreView: View {
                                 .foregroundStyle(primaryFg.opacity(0.8))
                         }
                         Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(primaryFg.opacity(0.6))
                     }
                     .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(primaryFg.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .overlay(RoundedRectangle(cornerRadius: 20).stroke(primaryFg.opacity(0.12), lineWidth: 1))
@@ -105,16 +198,7 @@ struct ExploreView: View {
     }
     
     private func count(for category: Category) -> Int {
-        store.ideas.filter { $0.categoryId == category.id }.count
-    }
-    
-    private func iconForCategory(_ category: Category) -> String {
-        if category.id == Category.melodyId { return "waveform" }
-        if category.id == Category.lyricsId { return "music.quarternote.3" }
-        if category.id == Category.fictionId { return "book.fill" }
-        if category.id == Category.conceptId { return "lightbulb.fill" }
-        if category.id == Category.poetryId { return "text.quote" }
-        return "tag.fill"
+        visibleIdeas.filter { $0.categoryId == category.id }.count
     }
     
     private var addButton: some View {
@@ -145,8 +229,12 @@ struct CategoryFeedView: View {
     private var isLight: Bool { colorScheme == .light }
     private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
 
+    private var visibleIdeas: [Idea] {
+        store.ideas.filter { !store.hiddenIdeaIds.contains($0.id) }
+    }
+
     private var ideas: [Idea] {
-        store.ideas.filter { $0.categoryId == category.id }
+        visibleIdeas.filter { $0.categoryId == category.id }
     }
     
     var body: some View {

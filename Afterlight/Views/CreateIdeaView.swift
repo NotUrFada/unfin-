@@ -6,6 +6,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import PencilKit
 
 struct ImageFile: Transferable {
     let data: Data
@@ -46,8 +47,12 @@ struct CreateIdeaView: View {
     @StateObject private var voiceRecorder = VoiceRecorder()
     @State private var recordedVoiceURL: URL?
     
+    @State private var ideaDrawing = PKDrawing()
+    
     private var hasContent: Bool {
-        !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || recordedVoiceURL != nil
+        !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || recordedVoiceURL != nil
+            || !ideaDrawing.strokes.isEmpty
     }
     
     var body: some View {
@@ -59,6 +64,7 @@ struct CreateIdeaView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         categorySection
                         ideaSection
+                        startWithDrawingSection
                         attachmentsSection
                         hintText
                     }
@@ -276,6 +282,19 @@ struct CreateIdeaView: View {
         }
     }
     
+    private var startWithDrawingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Or start with a drawing")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.92))
+            Text("Someone can finish or color it.")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.white.opacity(0.7))
+            DrawingCanvasView(drawing: $ideaDrawing, readOnly: false)
+                .frame(height: 220)
+        }
+    }
+    
     private var attachmentsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Attachments")
@@ -412,6 +431,19 @@ struct CreateIdeaView: View {
                     return
                 }
             }
+            var drawingPath: String?
+            let drawingToUpload = await MainActor.run { ideaDrawing }
+            if !drawingToUpload.strokes.isEmpty, let data = try? drawingToUpload.dataRepresentation() {
+                do {
+                    drawingPath = try await store.uploadDrawingForIdea(ideaId: ideaId, data: data)
+                } catch {
+                    await MainActor.run {
+                        isPosting = false
+                        store.postError = "Failed to upload drawing: \(error.localizedDescription)"
+                    }
+                    return
+                }
+            }
             for item in selectedPhotoItems {
                 if let imageFile = try? await item.loadTransferable(type: ImageFile.self) {
                     let fileName = "\(UUID().uuidString).jpg"
@@ -434,11 +466,13 @@ struct CreateIdeaView: View {
             let idea = Idea(
                 id: ideaId,
                 categoryId: selectedCategoryId,
-                content: textContent.isEmpty && voicePath != nil ? "Voice note" : textContent,
+                content: textContent.isEmpty && voicePath == nil && drawingPath == nil ? "Drawing" : (textContent.isEmpty && voicePath != nil ? "Voice note" : textContent),
                 voicePath: voicePath,
+                drawingPath: drawingPath,
                 authorId: authorId,
                 authorDisplayName: store.currentUserName,
-                attachments: attachments
+                attachments: attachments,
+                isSensitive: false
             )
             do {
                 try await store.addIdea(idea)

@@ -129,11 +129,17 @@ private struct IdeaRow: Codable {
     let categoryId: UUID
     let content: String
     let voicePath: String?
+    let drawingPath: String?
     let authorId: UUID
     let authorDisplayName: String
     let createdAt: Date
     let contributions: [ContributionRow]
     let attachments: [AttachmentRow]
+    let finishedAt: Date?
+    let isSensitive: Bool
+    let averageRating: Double?
+    let ratingCount: Int
+    let completionPercentage: Int
     
     enum CodingKeys: String, CodingKey {
         case id, content, voicePath = "voice_path"
@@ -142,18 +148,30 @@ private struct IdeaRow: Codable {
         case authorDisplayName = "author_display_name"
         case createdAt = "created_at"
         case contributions, attachments
+        case finishedAt = "finished_at"
+        case isSensitive = "is_sensitive"
+        case drawingPath = "drawing_path"
+        case averageRating = "average_rating"
+        case ratingCount = "rating_count"
+        case completionPercentage = "completion_percentage"
     }
     
-    init(id: UUID, categoryId: UUID, content: String, voicePath: String? = nil, authorId: UUID, authorDisplayName: String, createdAt: Date, contributions: [ContributionRow], attachments: [AttachmentRow]) {
+    init(id: UUID, categoryId: UUID, content: String, voicePath: String? = nil, drawingPath: String? = nil, authorId: UUID, authorDisplayName: String, createdAt: Date, contributions: [ContributionRow], attachments: [AttachmentRow], finishedAt: Date? = nil, isSensitive: Bool = false, averageRating: Double? = nil, ratingCount: Int = 0, completionPercentage: Int = 0) {
         self.id = id
         self.categoryId = categoryId
         self.content = content
         self.voicePath = voicePath
+        self.drawingPath = drawingPath
         self.authorId = authorId
         self.authorDisplayName = authorDisplayName
         self.createdAt = createdAt
         self.contributions = contributions
         self.attachments = attachments
+        self.finishedAt = finishedAt
+        self.isSensitive = isSensitive
+        self.averageRating = averageRating
+        self.ratingCount = ratingCount
+        self.completionPercentage = min(100, max(0, completionPercentage))
     }
     
     init(from decoder: Decoder) throws {
@@ -167,6 +185,12 @@ private struct IdeaRow: Codable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         contributions = try c.decode([ContributionRow].self, forKey: .contributions)
         attachments = try c.decode([AttachmentRow].self, forKey: .attachments)
+        finishedAt = try c.decodeIfPresent(Date.self, forKey: .finishedAt)
+        isSensitive = try c.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
+        drawingPath = try c.decodeIfPresent(String.self, forKey: .drawingPath)
+        averageRating = try c.decodeIfPresent(Double.self, forKey: .averageRating)
+        ratingCount = try c.decodeIfPresent(Int.self, forKey: .ratingCount) ?? 0
+        completionPercentage = min(100, max(0, try c.decodeIfPresent(Int.self, forKey: .completionPercentage) ?? 0))
     }
 }
 
@@ -182,6 +206,9 @@ private struct ContributionRow: Codable {
     let authorId: UUID?
     let editedAt: Date?
     let attachments: [AttachmentRow]
+    let drawingPath: String?
+    let authorRating: Int?
+    let authorRatingAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id, content, createdAt = "created_at"
@@ -192,9 +219,12 @@ private struct ContributionRow: Codable {
         case authorId = "author_id"
         case editedAt = "edited_at"
         case attachments
+        case drawingPath = "drawing_path"
+        case authorRating = "author_rating"
+        case authorRatingAt = "author_rating_at"
     }
     
-    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, isPublic: Bool, reactions: [ReactionRow], comments: [CommentRow], voicePath: String? = nil, authorId: UUID? = nil, editedAt: Date? = nil, attachments: [AttachmentRow] = []) {
+    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, isPublic: Bool, reactions: [ReactionRow], comments: [CommentRow], voicePath: String? = nil, authorId: UUID? = nil, editedAt: Date? = nil, attachments: [AttachmentRow] = [], drawingPath: String? = nil, authorRating: Int? = nil, authorRatingAt: Date? = nil) {
         self.id = id
         self.authorDisplayName = authorDisplayName
         self.content = content
@@ -206,6 +236,9 @@ private struct ContributionRow: Codable {
         self.authorId = authorId
         self.editedAt = editedAt
         self.attachments = attachments
+        self.drawingPath = drawingPath
+        self.authorRating = authorRating
+        self.authorRatingAt = authorRatingAt
     }
     
     init(from decoder: Decoder) throws {
@@ -221,6 +254,9 @@ private struct ContributionRow: Codable {
         authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
         editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
         attachments = try c.decodeIfPresent([AttachmentRow].self, forKey: .attachments) ?? []
+        drawingPath = try c.decodeIfPresent(String.self, forKey: .drawingPath)
+        authorRating = try c.decodeIfPresent(Int.self, forKey: .authorRating)
+        authorRatingAt = try c.decodeIfPresent(Date.self, forKey: .authorRatingAt)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -236,6 +272,9 @@ private struct ContributionRow: Codable {
         try c.encodeIfPresent(authorId, forKey: .authorId)
         try c.encodeIfPresent(editedAt, forKey: .editedAt)
         try c.encode(attachments, forKey: .attachments)
+        try c.encodeIfPresent(drawingPath, forKey: .drawingPath)
+        try c.encodeIfPresent(authorRating, forKey: .authorRating)
+        try c.encodeIfPresent(authorRatingAt, forKey: .authorRatingAt)
     }
 }
 
@@ -398,14 +437,70 @@ extension SupabaseService {
         return (appUserId, displayName)
     }
     
-    static func login(email: String, password: String) async throws -> (appUserId: UUID, displayName: String) {
+    static func login(email: String, password: String) async throws -> (appUserId: UUID, displayName: String, profile: FirestoreUserProfile?) {
         _ = try await client.auth.signIn(email: email, password: password)
         let session = try await client.auth.session
-        let rows: [ProfileRow] = try await client.from("profiles").select().eq("id", value: session.user.id).execute().value
-        guard let row = rows.first else {
-            throw NSError(domain: "SupabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "User profile not found"])
+        // Select profile columns including aura so we can return full profile and show correct avatar after login
+        let selectColumns = "id,app_user_id,display_name,email,aura_variant,aura_palette_index,glyph_grid,created_at,streak_count,streak_last_date"
+        var rows: [ProfileRow] = (try? await client.from("profiles").select(selectColumns).eq("id", value: session.user.id).execute().value) ?? []
+        if let row = rows.first {
+            let profile = FirestoreUserProfile(
+                appUserId: row.appUserId.uuidString,
+                displayName: row.displayName,
+                email: row.email,
+                auraVariant: row.auraVariant,
+                auraPaletteIndex: row.auraPaletteIndex,
+                glyphGrid: row.glyphGrid,
+                createdAt: row.createdAt,
+                streakCount: row.streakCount,
+                streakLastDate: row.streakLastDate
+            )
+            return (row.appUserId, row.displayName, profile)
         }
-        return (row.appUserId, row.displayName)
+        // Auth user exists but no profile row. Insert minimal profile (only columns that always exist) so we don't fail on older DBs missing streak_count/streak_last_date.
+        let appUserId = UUID()
+        let displayName = session.user.email?.split(separator: "@").first.map(String.init) ?? "User"
+        struct MinimalProfileInsert: Encodable {
+            let id: UUID
+            let app_user_id: UUID
+            let display_name: String
+            let email: String?
+            let aura_variant: Int?
+            let aura_palette_index: Int?
+            let glyph_grid: String?
+            let created_at: Date
+        }
+        let minimal = MinimalProfileInsert(
+            id: session.user.id,
+            app_user_id: appUserId,
+            display_name: displayName,
+            email: session.user.email,
+            aura_variant: nil,
+            aura_palette_index: nil,
+            glyph_grid: nil,
+            created_at: Date()
+        )
+        do {
+            try await client.from("profiles").upsert(minimal, onConflict: "id", ignoreDuplicates: true).execute()
+        } catch {
+            try? await client.from("profiles").insert(minimal).execute()
+        }
+        let after: [ProfileRow] = (try? await client.from("profiles").select(selectColumns).eq("id", value: session.user.id).execute().value) ?? []
+        if let row = after.first {
+            let profile = FirestoreUserProfile(
+                appUserId: row.appUserId.uuidString,
+                displayName: row.displayName,
+                email: row.email,
+                auraVariant: row.auraVariant,
+                auraPaletteIndex: row.auraPaletteIndex,
+                glyphGrid: row.glyphGrid,
+                createdAt: row.createdAt,
+                streakCount: row.streakCount,
+                streakLastDate: row.streakLastDate
+            )
+            return (row.appUserId, row.displayName, profile)
+        }
+        throw NSError(domain: "SupabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not load your profile. Please try again or sign up if you don't have an account."])
     }
     
     static func logout() async throws {
@@ -493,6 +588,7 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
         categoryId: row.categoryId,
         content: row.content,
         voicePath: row.voicePath,
+        drawingPath: row.drawingPath,
         authorId: row.authorId,
         authorDisplayName: row.authorDisplayName,
         createdAt: row.createdAt,
@@ -519,10 +615,18 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
                 voicePath: c.voicePath,
                 authorId: c.authorId,
                 editedAt: c.editedAt,
-                attachments: c.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } }
+                attachments: c.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } },
+                drawingPath: c.drawingPath,
+                authorRating: c.authorRating,
+                authorRatingAt: c.authorRatingAt
             )
         },
-        attachments: row.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } }
+        attachments: row.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } },
+        finishedAt: row.finishedAt,
+        isSensitive: row.isSensitive,
+        averageRating: row.averageRating,
+        ratingCount: row.ratingCount,
+        completionPercentage: row.completionPercentage
     )
 }
 
@@ -546,12 +650,15 @@ extension SupabaseService {
             let categoryId: UUID
             let content: String
             let voicePath: String?
+            let drawingPath: String?
             let authorId: UUID
             let authorDisplayName: String
             let contributions: [ContributionRow]
             let attachments: [AttachmentRow]
+            let isSensitive: Bool
+            let completionPercentage: Int
             enum CodingKeys: String, CodingKey {
-                case id, content, voicePath = "voice_path", contributions, attachments
+                case id, content, voicePath = "voice_path", drawingPath = "drawing_path", contributions, attachments, isSensitive = "is_sensitive", completionPercentage = "completion_percentage"
                 case categoryId = "category_id"
                 case authorId = "author_id"
                 case authorDisplayName = "author_display_name"
@@ -562,6 +669,7 @@ extension SupabaseService {
             categoryId: idea.categoryId,
             content: idea.content,
             voicePath: idea.voicePath,
+            drawingPath: idea.drawingPath,
             authorId: authorId,
             authorDisplayName: idea.authorDisplayName,
             contributions: idea.contributions.map { c in
@@ -576,10 +684,15 @@ extension SupabaseService {
                     voicePath: c.voicePath,
                     authorId: c.authorId,
                     editedAt: c.editedAt,
-                    attachments: c.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
+                    attachments: c.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) },
+                    drawingPath: c.drawingPath,
+                    authorRating: c.authorRating,
+                    authorRatingAt: c.authorRatingAt
                 )
             },
-            attachments: idea.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
+            attachments: idea.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) },
+            isSensitive: idea.isSensitive,
+            completionPercentage: idea.completionPercentage
         )
         try await client.from("ideas").insert(payload).execute()
     }
@@ -597,7 +710,10 @@ extension SupabaseService {
                 voicePath: c.voicePath,
                 authorId: c.authorId,
                 editedAt: c.editedAt,
-                attachments: c.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
+                attachments: c.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) },
+                drawingPath: c.drawingPath,
+                authorRating: c.authorRating,
+                authorRatingAt: c.authorRatingAt
             )
         }
         let attachmentsData = attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
@@ -614,8 +730,110 @@ extension SupabaseService {
         return rows.first.map(ideaFromRow)
     }
     
+    /// Rate an idea 1–5. One rating per user per idea (upsert). Requires current session.
+    static func setIdeaRating(ideaId: UUID, rating: Int) async throws {
+        let session = try await client.auth.session
+        let raterId = session.user.id
+        let clamped = min(5, max(1, rating))
+        struct Row: Encodable {
+            let idea_id: UUID
+            let rater_id: UUID
+            let rating: Int
+        }
+        try await client.from("idea_ratings")
+            .upsert(Row(idea_id: ideaId, rater_id: raterId, rating: clamped), onConflict: "idea_id,rater_id")
+            .execute()
+    }
+    
+    /// Remove the current user's rating for an idea. Requires session.
+    static func deleteIdeaRating(ideaId: UUID) async throws {
+        let session = try await client.auth.session
+        try await client.from("idea_ratings")
+            .delete()
+            .eq("idea_id", value: ideaId)
+            .eq("rater_id", value: session.user.id)
+            .execute()
+    }
+    
+    /// Current user's ratings per idea (for showing "Your rating" and prefilling stars). Requires current session.
+    static func getMyIdeaRatings() async throws -> [UUID: Int] {
+        let session = try await client.auth.session
+        struct IdeaRatingRow: Decodable {
+            let idea_id: UUID
+            let rating: Int
+            enum CodingKeys: String, CodingKey { case idea_id, rating }
+        }
+        let rows: [IdeaRatingRow] = try await client.from("idea_ratings")
+            .select("idea_id, rating")
+            .eq("rater_id", value: session.user.id)
+            .execute()
+            .value
+        return Dictionary(uniqueKeysWithValues: rows.map { ($0.idea_id, $0.rating) })
+    }
+    
     static func deleteIdea(ideaId: UUID) async throws {
         try await client.from("ideas").delete().eq("id", value: ideaId).execute()
+    }
+    
+    /// Submit a report for an idea (or idea + contribution). For later moderation. Requires session.
+    static func reportIdea(ideaId: UUID, reason: String, details: String? = nil, contributionId: UUID? = nil) async throws {
+        let session = try await client.auth.session
+        struct Row: Encodable {
+            let reporter_id: UUID
+            let idea_id: UUID
+            let contribution_id: UUID?
+            let reason: String
+            let details: String?
+        }
+        try await client.from("reports")
+            .insert(Row(reporter_id: session.user.id, idea_id: ideaId, contribution_id: contributionId, reason: reason, details: details))
+            .execute()
+    }
+    
+    /// Hide an idea from the current user’s feed (“Don’t show this again”). Requires session.
+    static func hideIdea(ideaId: UUID) async throws {
+        let session = try await client.auth.session
+        struct Row: Encodable {
+            let user_id: UUID
+            let idea_id: UUID
+        }
+        try await client.from("user_hidden_ideas").insert(Row(user_id: session.user.id, idea_id: ideaId)).execute()
+    }
+    
+    /// Fetch the current user’s hidden idea ids. Requires session. Returns empty if not logged in or on error.
+    static func getHiddenIdeaIds() async throws -> [UUID] {
+        let session = try await client.auth.session
+        struct Row: Decodable { let idea_id: UUID }
+        let rows: [Row] = try await client.from("user_hidden_ideas")
+            .select("idea_id")
+            .eq("user_id", value: session.user.id)
+            .execute()
+            .value
+        return rows.map(\.idea_id)
+    }
+
+    /// Delete all ideas authored by this user (e.g. when user deletes their account).
+    static func deleteIdeasByAuthor(authorId: UUID) async throws {
+        try await client.from("ideas").delete().eq("author_id", value: authorId).execute()
+    }
+
+    /// Mark an idea as finished (idea author only). Sets finished_at so no new completions are expected.
+    static func updateIdeaFinished(ideaId: UUID, finishedAt: Date?) async throws {
+        struct Payload: Encodable {
+            let finished_at: Date?
+            enum CodingKeys: String, CodingKey { case finished_at }
+        }
+        let payload = Payload(finished_at: finishedAt)
+        try await client.from("ideas").update(payload).eq("id", value: ideaId).execute()
+    }
+    
+    /// Idea author sets how complete the idea is (0–100%). Still accepting contributions until 100% or marked finished.
+    static func updateIdeaCompletionPercentage(ideaId: UUID, percentage: Int) async throws {
+        let clamped = min(100, max(0, percentage))
+        struct Payload: Encodable {
+            let completion_percentage: Int
+        }
+        try await client.from("ideas").update(Payload(completion_percentage: clamped)).eq("id", value: ideaId).execute()
     }
     
     static func listenCategories(completion: @escaping ([Category]) -> Void) -> SupabaseListenerRegistration {

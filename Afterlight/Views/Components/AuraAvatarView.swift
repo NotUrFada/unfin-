@@ -149,6 +149,8 @@ struct AuraAvatarView: View {
     var auraVariant: Int?
     var customColors: (Color, Color, Color)?
     var legacyPaletteIndex: Int?
+    /// When no aura is saved, use a deterministic aura from this name so the avatar is never a gray placeholder.
+    var fallbackDisplayName: String? = nil
 
     private var config: AuraConfig? {
         if let custom = customColors {
@@ -159,6 +161,9 @@ struct AuraAvatarView: View {
         }
         if let p = legacyPaletteIndex {
             return .fromLegacy(paletteIndex: p)
+        }
+        if let name = fallbackDisplayName, !name.isEmpty {
+            return .from(variant: auraVariantForDisplayName(name))
         }
         return nil
     }

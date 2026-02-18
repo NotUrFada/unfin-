@@ -6,6 +6,7 @@
 import Foundation
 import SwiftUI
 import UserNotifications
+import PencilKit
 
 final class IdeaStore: ObservableObject {
     @Published var ideas: [Idea] = []
@@ -97,6 +98,12 @@ final class IdeaStore: ObservableObject {
     
     @Published var notifications: [AppNotification] = []
     
+    /// Current user’s rating (1–5) per idea id. Loaded when ideas load and when user is logged in.
+    @Published var myIdeaRatings: [UUID: Int] = [:]
+    
+    /// Idea ids the current user has hidden (“Don’t show this again”). Loaded when signed in; filter feed/explore by this.
+    @Published var hiddenIdeaIds: Set<UUID> = []
+    
     init() {
         #if DEBUG
         // When running from Xcode, start at the welcome screen (don’t restore session).
@@ -133,6 +140,9 @@ final class IdeaStore: ObservableObject {
             currentUserId = result.appUserId
             currentUserName = result.displayName
             currentUserProfile = result.profile
+            if result.profile.glyphGrid != nil {
+                UserDefaults.standard.removeObject(forKey: Self.justSignedUpForOnboardingKey)
+            }
             startListeners()
         } catch {
             authError = error.localizedDescription
@@ -149,6 +159,7 @@ final class IdeaStore: ObservableObject {
         ideas = []
         categories = Category.defaultSystemCategories
         notifications = []
+        hiddenIdeaIds = []
         currentUserId = nil
         currentUserName = "Anonymous"
         currentUserProfile = nil
@@ -159,7 +170,22 @@ final class IdeaStore: ObservableObject {
         categoriesListener?.remove()
         notificationsListener?.remove()
         ideasListener = SupabaseService.listenIdeas { [weak self] list in
-            DispatchQueue.main.async { self?.ideas = list }
+            DispatchQueue.main.async {
+                self?.ideas = list
+                self?.loadMyIdeaRatingsIfNeeded()
+            }
+        }
+        Task {
+            do {
+                let ids = try await SupabaseService.getHiddenIdeaIds()
+                await MainActor.run { [weak self] in
+                    self?.hiddenIdeaIds = Set(ids)
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.hiddenIdeaIds = []
+                }
+            }
         }
         categoriesListener = SupabaseService.listenCategories { [weak self] list in
             DispatchQueue.main.async { self?.categories = list }
@@ -228,8 +254,11 @@ final class IdeaStore: ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
     
+    private static let justSignedUpForOnboardingKey = "justSignedUpForOnboarding"
+    
+    /// Onboarding (aura shuffle) only for new users who just signed up, not when logging in.
     var needsOnboarding: Bool {
-        currentUserProfile?.glyphGrid == nil
+        (currentUserProfile?.glyphGrid == nil) && UserDefaults.standard.bool(forKey: Self.justSignedUpForOnboardingKey)
     }
     
     /// Current consecutive-day streak (post idea, contribution, or comment). Read from profile; updated when recordActivity() runs.
@@ -264,20 +293,21 @@ final class IdeaStore: ObservableObject {
             currentUserName = displayNameResult
             currentUserProfile = FirestoreUserProfile(appUserId: appUserId.uuidString, displayName: displayNameResult, email: emailLower, auraVariant: nil, auraPaletteIndex: nil, glyphGrid: nil, createdAt: nil, streakCount: 0, streakLastDate: nil)
             startListeners()
+            UserDefaults.standard.set(true, forKey: Self.justSignedUpForOnboardingKey)
         }
     }
     
     func login(email: String, password: String) async throws {
         authError = nil
         let emailLower = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let (appUserId, displayName) = try await SupabaseService.login(email: emailLower, password: password)
-        let profileResult = try? await SupabaseService.fetchUserProfile()
+        let (appUserId, displayName, profileFromLogin) = try await SupabaseService.login(email: emailLower, password: password)
+        UserDefaults.standard.removeObject(forKey: Self.justSignedUpForOnboardingKey)
+        // Use profile from login response (includes saved aura) so avatar is correct immediately; fallback to fetch if nil
+        let profile = profileFromLogin ?? (try? await SupabaseService.fetchUserProfile())?.profile
         await MainActor.run {
             currentUserId = appUserId
             currentUserName = displayName
-            if let result = profileResult {
-                currentUserProfile = result.profile
-            }
+            currentUserProfile = profile
             startListeners()
         }
     }
@@ -294,6 +324,18 @@ final class IdeaStore: ObservableObject {
         return account(byId: id)
     }
     
+    /// Refreshes current user's profile from Supabase (aura, display name, etc.). Call when opening Profile tab so gradient and avatar show saved aura.
+    func refreshUserProfileIfNeeded() {
+        guard currentUserId != nil else { return }
+        Task {
+            guard let result = try? await SupabaseService.fetchUserProfile() else { return }
+            await MainActor.run {
+                currentUserName = result.displayName
+                currentUserProfile = result.profile
+            }
+        }
+    }
+    
     func updateAccountDisplayName(_ name: String) {
         guard !name.isEmpty else { return }
         Task {
@@ -306,6 +348,7 @@ final class IdeaStore: ObservableObject {
     }
     
     func completeOnboarding(glyphGrid: String, auraPaletteIndex: Int?, auraVariant: Int?, displayName: String?) {
+        UserDefaults.standard.removeObject(forKey: Self.justSignedUpForOnboardingKey)
         // Update local state immediately so the UI transitions to the main app right away
         let name = (displayName?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? currentUserName
         if !name.isEmpty { currentUserName = name }
@@ -340,9 +383,24 @@ final class IdeaStore: ObservableObject {
             p.auraVariant = auraVariant
             p.auraPaletteIndex = nil
             currentUserProfile = p
+        } else if let id = currentUserId {
+            currentUserProfile = FirestoreUserProfile(
+                appUserId: id.uuidString,
+                displayName: currentUserName,
+                email: nil,
+                auraVariant: auraVariant,
+                auraPaletteIndex: nil,
+                glyphGrid: nil,
+                createdAt: nil,
+                streakCount: 0,
+                streakLastDate: nil
+            )
         }
         Task {
             try? await SupabaseService.updateUserProfile(auraVariant: auraVariant, auraPaletteIndex: nil)
+            await MainActor.run {
+                refreshUserProfileIfNeeded()
+            }
         }
     }
     
@@ -377,12 +435,32 @@ final class IdeaStore: ObservableObject {
     }
     
     func deleteAccount() {
-        let nameToRemove = currentUserName
-        if let id = currentUserId {
-            currentUserId = nil
+        guard let authorId = currentUserId else {
             currentUserName = "Anonymous"
-            currentUserProfile = nil
             handleSignedOut()
+            return
+        }
+        Task {
+            do {
+                try await SupabaseService.deleteIdeasByAuthor(authorId: authorId)
+                await MainActor.run {
+                    ideas.removeAll { $0.authorId == authorId }
+                }
+                try await SupabaseService.logout()
+                await MainActor.run {
+                    currentUserId = nil
+                    currentUserName = "Anonymous"
+                    currentUserProfile = nil
+                    handleSignedOut()
+                }
+            } catch {
+                await MainActor.run {
+                    currentUserId = nil
+                    currentUserName = "Anonymous"
+                    currentUserProfile = nil
+                    handleSignedOut()
+                }
+            }
         }
     }
     
@@ -412,10 +490,11 @@ final class IdeaStore: ObservableObject {
         }
     }
     
-    func addContribution(ideaId: UUID, content: String, isPublic: Bool = true, voicePath: String? = nil, attachments: [Attachment] = [], contributionId: UUID? = nil) {
+    func addContribution(ideaId: UUID, content: String, isPublic: Bool = true, voicePath: String? = nil, attachments: [Attachment] = [], drawingPath: String? = nil, contributionId: UUID? = nil) {
         guard let userId = currentUserId, let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
+        guard !isCurrentUserIdeaAuthor(ideaId: ideaId) else { return }
         let idea = ideas[index]
-        let contribution = Contribution(id: contributionId ?? UUID(), authorDisplayName: currentUserName, content: content, isPublic: isPublic, voicePath: voicePath, authorId: userId, attachments: attachments)
+        let contribution = Contribution(id: contributionId ?? UUID(), authorDisplayName: currentUserName, content: content, isPublic: isPublic, voicePath: voicePath, authorId: userId, attachments: attachments, drawingPath: drawingPath)
         ideas[index].contributions.append(contribution)
         Task {
             try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[index].contributions, attachments: ideas[index].attachments)
@@ -605,6 +684,134 @@ final class IdeaStore: ObservableObject {
             try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
         }
     }
+
+    /// Idea author rates a contribution 1–5. Only the idea owner can set/change the rating. You cannot rate your own contribution.
+    func setContributionRating(ideaId: UUID, contributionId: UUID, rating: Int) {
+        let clamped = min(5, max(1, rating))
+        guard let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
+              let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }) else { return }
+        let idea = ideas[ideaIndex]
+        let isIdeaAuthor = idea.authorId == currentUserId
+            || (idea.authorId == nil && idea.authorDisplayName == currentUserName)
+        guard isIdeaAuthor else { return }
+        let contrib = ideas[ideaIndex].contributions[contribIndex]
+        let isOwnContrib = contrib.authorId == currentUserId
+            || (contrib.authorId == nil && contrib.authorDisplayName == currentUserName)
+        guard !isOwnContrib else { return }
+        ideas[ideaIndex].contributions[contribIndex].authorRating = clamped
+        ideas[ideaIndex].contributions[contribIndex].authorRatingAt = Date()
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
+    }
+    
+    /// Idea author removes their rating from a contribution.
+    func clearContributionRating(ideaId: UUID, contributionId: UUID) {
+        guard let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
+              let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }) else { return }
+        let idea = ideas[ideaIndex]
+        let isIdeaAuthor = idea.authorId == currentUserId
+            || (idea.authorId == nil && idea.authorDisplayName == currentUserName)
+        guard isIdeaAuthor else { return }
+        ideas[ideaIndex].contributions[contribIndex].authorRating = nil
+        ideas[ideaIndex].contributions[contribIndex].authorRatingAt = nil
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
+    }
+
+    /// Average star rating received by this user (from idea authors rating their contributions). Nil if no ratings.
+    func averageRatingForUser(displayName: String, authorId: UUID?) -> Double? {
+        let ratings = ideas.flatMap(\.contributions).filter { c in
+            if let aid = authorId, let cid = c.authorId { return cid == aid }
+            return c.authorDisplayName == displayName
+        }.compactMap(\.authorRating)
+        guard !ratings.isEmpty else { return nil }
+        return Double(ratings.reduce(0, +)) / Double(ratings.count)
+    }
+    
+    /// Average idea rating for ideas this user authored (idea maker quality). Nil if none of their ideas have ratings.
+    func averageIdeaRatingForUser(displayName: String, authorId: UUID?) -> Double? {
+        let myIdeas = ideas.filter { idea in
+            if let aid = authorId { return idea.authorId == aid }
+            return idea.authorId == nil && idea.authorDisplayName == displayName
+        }
+        let withRating = myIdeas.compactMap(\.averageRating)
+        guard !withRating.isEmpty else { return nil }
+        return withRating.reduce(0, +) / Double(withRating.count)
+    }
+    
+    private func loadMyIdeaRatingsIfNeeded() {
+        guard currentUserId != nil else { return }
+        Task { await loadMyIdeaRatings() }
+    }
+    
+    private func loadMyIdeaRatings() async {
+        guard let map = try? await SupabaseService.getMyIdeaRatings() else { return }
+        await MainActor.run { myIdeaRatings = map }
+    }
+    
+    /// Rate an idea 1–5 (reader rating; one per user per idea). You cannot rate your own idea.
+    func setIdeaRating(ideaId: UUID, rating: Int) {
+        guard !isCurrentUserIdeaAuthor(ideaId: ideaId) else { return }
+        let clamped = min(5, max(1, rating))
+        myIdeaRatings[ideaId] = clamped
+        Task {
+            try? await SupabaseService.setIdeaRating(ideaId: ideaId, rating: clamped)
+            if let updated = try? await SupabaseService.getIdea(ideaId: ideaId) {
+                await MainActor.run {
+                    if let idx = ideas.firstIndex(where: { $0.id == ideaId }) {
+                        ideas[idx] = updated
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Remove the current user's rating for an idea.
+    func clearIdeaRating(ideaId: UUID) {
+        guard !isCurrentUserIdeaAuthor(ideaId: ideaId) else { return }
+        myIdeaRatings.removeValue(forKey: ideaId)
+        Task {
+            try? await SupabaseService.deleteIdeaRating(ideaId: ideaId)
+            if let updated = try? await SupabaseService.getIdea(ideaId: ideaId) {
+                await MainActor.run {
+                    if let idx = ideas.firstIndex(where: { $0.id == ideaId }) {
+                        ideas[idx] = updated
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Hide an idea from the current user’s feed (“Don’t show this again”). Requires session.
+    func hideIdea(ideaId: UUID) {
+        hiddenIdeaIds.insert(ideaId)
+        Task {
+            try? await SupabaseService.hideIdea(ideaId: ideaId)
+        }
+    }
+    
+    /// Report an idea (for later moderation). Requires session.
+    func reportIdea(ideaId: UUID, reason: String, details: String? = nil) {
+        Task {
+            try? await SupabaseService.reportIdea(ideaId: ideaId, reason: reason, details: details, contributionId: nil)
+        }
+    }
+    
+    /// Report a contribution (for later moderation). Requires session.
+    func reportContribution(ideaId: UUID, contributionId: UUID, reason: String, details: String? = nil) {
+        Task {
+            try? await SupabaseService.reportIdea(ideaId: ideaId, reason: reason, details: details, contributionId: contributionId)
+        }
+    }
+
+    /// Whether the current user is the idea author (and can rate contributions).
+    func isCurrentUserIdeaAuthor(ideaId: UUID) -> Bool {
+        guard let idea = idea(byId: ideaId) else { return false }
+        if let aid = idea.authorId { return aid == currentUserId }
+        return idea.authorDisplayName == currentUserName
+    }
     
     /// Upload voice audio for an idea; returns storage path e.g. "ideas/ideaId/voice.m4a".
     func uploadVoiceForIdea(ideaId: UUID, fileURL: URL) async throws -> String {
@@ -628,6 +835,42 @@ final class IdeaStore: ObservableObject {
         let fileName = "voice_comment_\(UUID().uuidString).m4a"
         _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: fileName)
         return "ideas/\(ideaId.uuidString)/\(fileName)"
+    }
+    
+    /// Upload PencilKit drawing for an idea; returns storage path. Call before or after inserting idea (use same ideaId).
+    func uploadDrawingForIdea(ideaId: UUID, data: Data) async throws -> String {
+        _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: "drawing.pkdrawing")
+        return "ideas/\(ideaId.uuidString)/drawing.pkdrawing"
+    }
+    
+    /// Upload PencilKit drawing for a contribution; returns storage path.
+    func uploadDrawingForContribution(ideaId: UUID, contributionId: UUID, data: Data) async throws -> String {
+        _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: "drawing.pkdrawing", contributionId: contributionId)
+        return "ideas/\(ideaId.uuidString)/completions/\(contributionId.uuidString)/drawing.pkdrawing"
+    }
+    
+    /// Download and decode a stored drawing. Returns nil if missing or invalid.
+    func loadDrawing(storagePath: String) async -> PKDrawing? {
+        guard let url = try? await SupabaseService.downloadURL(forStoragePath: storagePath),
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let drawing = try? PKDrawing(data: data) else { return nil }
+        return drawing
+    }
+    
+    /// Load and merge all drawings for an idea (author + contributions in order). Used so completions continue on the same canvas.
+    func loadMergedDrawing(idea: Idea) async -> PKDrawing {
+        var paths: [String] = []
+        if let p = idea.drawingPath { paths.append(p) }
+        for c in idea.contributions {
+            if let p = c.drawingPath { paths.append(p) }
+        }
+        var allStrokes: [PKStroke] = []
+        for path in paths {
+            if let d = await loadDrawing(storagePath: path) {
+                allStrokes.append(contentsOf: d.strokes)
+            }
+        }
+        return PKDrawing(strokes: allStrokes)
     }
     
     /// Signed URL for playing a voice recording (idea, contribution, or comment voice path).
@@ -655,6 +898,48 @@ final class IdeaStore: ObservableObject {
         try await SupabaseService.deleteIdea(ideaId: ideaId)
         await MainActor.run {
             ideas.removeAll { $0.id == ideaId }
+        }
+    }
+
+    /// Mark an idea as finished (idea author only). Stops new completions.
+    func markIdeaAsFinished(ideaId: UUID) {
+        guard let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
+        let idea = ideas[index]
+        let isOwner = idea.authorId == currentUserId
+            || (idea.authorId == nil && idea.authorDisplayName == currentUserName)
+        guard isOwner else { return }
+        let now = Date()
+        ideas[index].finishedAt = now
+        Task {
+            try? await SupabaseService.updateIdeaFinished(ideaId: ideaId, finishedAt: now)
+        }
+    }
+    
+    /// Idea author sets how complete the idea is (0–100%). Others see the progress; idea stays open until 100% or marked finished.
+    func setIdeaCompletionPercentage(ideaId: UUID, percentage: Int) {
+        guard let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
+        let idea = ideas[index]
+        let isOwner = idea.authorId == currentUserId
+            || (idea.authorId == nil && idea.authorDisplayName == currentUserName)
+        guard isOwner else { return }
+        let clamped = min(100, max(0, percentage))
+        ideas[index].completionPercentage = clamped
+        Task {
+            try? await SupabaseService.updateIdeaCompletionPercentage(ideaId: ideaId, percentage: clamped)
+        }
+    }
+    
+    /// Idea author removes a contribution they don’t want (e.g. not useful or not 50% complete). Only the idea owner can remove.
+    func removeContribution(ideaId: UUID, contributionId: UUID) {
+        guard let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
+        let idea = ideas[ideaIndex]
+        let isOwner = idea.authorId == currentUserId
+            || (idea.authorId == nil && idea.authorDisplayName == currentUserName)
+        guard isOwner else { return }
+        guard ideas[ideaIndex].contributions.contains(where: { $0.id == contributionId }) else { return }
+        ideas[ideaIndex].contributions.removeAll { $0.id == contributionId }
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
         }
     }
 }

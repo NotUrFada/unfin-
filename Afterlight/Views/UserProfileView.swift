@@ -32,18 +32,38 @@ struct UserProfileView: View {
         }.count
     }
 
+    /// (Contribution, parent Idea) for this user's contributions.
+    private var contributionsByUserWithIdeas: [(contribution: Contribution, idea: Idea)] {
+        store.ideas.flatMap { idea in
+            idea.contributions.compactMap { c -> (Contribution, Idea)? in
+                let isTheirs = (authorId != nil && c.authorId == authorId) || c.authorDisplayName == displayName
+                return isTheirs ? (c, idea) : nil
+            }
+        }
+    }
+
+    enum ProfileSegment { case ideas, contributions }
+    @State private var selectedProfileSegment: ProfileSegment = .ideas
+
     var body: some View {
         ZStack {
             BackgroundGradientView()
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 24) {
                     header
-                    ideasSection
+                    if selectedProfileSegment == .ideas {
+                        ideasSection
+                    } else {
+                        contributionsSection
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 160)
             }
+            .clipped()
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
@@ -65,28 +85,66 @@ struct UserProfileView: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
 
-            HStack(spacing: 16) {
-                HStack(spacing: 6) {
-                    Text("\(ideasByUser.count)")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(primaryFg)
-                    Text("ideas shared")
-                        .font(.system(size: 13))
-                        .foregroundStyle(secondaryFg)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    Button {
+                        selectedProfileSegment = .ideas
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("\(ideasByUser.count)")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("ideas shared")
+                                .font(.system(size: 13))
+                                .foregroundStyle(secondaryFg)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        selectedProfileSegment = .contributions
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("\(contributionsByUserCount)")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("contributions")
+                                .font(.system(size: 13))
+                                .foregroundStyle(secondaryFg)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    if let avg = store.averageRatingForUser(displayName: displayName, authorId: authorId) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.yellow)
+                            Text(String(format: "%.1f", avg))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("completions")
+                                .font(.system(size: 11))
+                                .foregroundStyle(secondaryFg)
+                        }
+                    }
+                    if let avg = store.averageIdeaRatingForUser(displayName: displayName, authorId: authorId) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.yellow)
+                            Text(String(format: "%.1f", avg))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("ideas")
+                                .font(.system(size: 11))
+                                .foregroundStyle(secondaryFg)
+                        }
+                    }
                 }
-                HStack(spacing: 6) {
-                    Text("\(contributionsByUserCount)")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(primaryFg)
-                    Text("contributions")
-                        .font(.system(size: 13))
-                        .foregroundStyle(secondaryFg)
-                }
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 24)
             .padding(.top, 8)
 
-            Text("Ideas by \(displayName)")
+            Text(selectedProfileSegment == .ideas ? "Ideas by \(displayName)" : "Contributions by \(displayName)")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(secondaryFg)
                 .padding(.horizontal, 24)
@@ -113,7 +171,46 @@ struct UserProfileView: View {
                 }
                 .padding(.horizontal, 24)
             }
-            Color.clear.frame(height: 120)
+        }
+    }
+
+    private var contributionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if contributionsByUserWithIdeas.isEmpty {
+                Text("No contributions yet.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(secondaryFg)
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(primaryFg.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .padding(.horizontal, 24)
+            } else {
+                ForEach(Array(contributionsByUserWithIdeas.enumerated()), id: \.element.contribution.id) { _, pair in
+                    Button {
+                        onSelectIdea(pair.idea.id)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            let preview = pair.contribution.content.isEmpty ? "Voice or drawing" : String(pair.contribution.content.prefix(120))
+                            if preview.count == 120 { Text(preview + "…") } else { Text(preview) }
+                                .font(.system(size: 15))
+                                .foregroundStyle(primaryFg)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Text("Added to: \(String(pair.idea.content.prefix(60)))\(pair.idea.content.count > 60 ? "…" : "")")
+                                .font(.system(size: 12))
+                                .foregroundStyle(secondaryFg)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(primaryFg.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 24)
+            }
         }
     }
 }
