@@ -178,16 +178,40 @@ struct FilterTab: View {
 }
 
 struct BackgroundGradientView: View {
+    @EnvironmentObject var store: IdeaStore
+
+    private var auraColors: (Color, Color, Color)? {
+        if let v = store.currentAccount?.auraVariant {
+            return AuraConfig.from(variant: v).colors
+        }
+        if let p = store.currentAccount?.auraPaletteIndex {
+            return AuraConfig.fromLegacy(paletteIndex: p).colors
+        }
+        return nil
+    }
+
     var body: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.91, green: 0.91, blue: 0.91),
-                Color(red: 0.75, green: 0.75, blue: 0.75),
-                Color(red: 0.1, green: 0.1, blue: 0.1)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
+        let useAura = auraColors != nil ? Float(1.0) : Float(0.0)
+        let (c1, c2, c3) = auraColors ?? (
+            Color(red: 0.06, green: 0.06, blue: 0.08),
+            Color(red: 0.18, green: 0.18, blue: 0.2),
+            Color(red: 0.38, green: 0.38, blue: 0.42)
         )
+        TimelineView(.animation) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 100)
+            Color.black
+                .layerEffect(
+                    ShaderLibrary.noisyGradient(
+                        .boundingRect,
+                        .float(time),
+                        .float(useAura),
+                        .color(c1),
+                        .color(c2),
+                        .color(c3)
+                    ),
+                    maxSampleOffset: .zero
+                )
+        }
         .ignoresSafeArea()
     }
 }

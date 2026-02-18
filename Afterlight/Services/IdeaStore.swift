@@ -370,10 +370,10 @@ final class IdeaStore: ObservableObject {
         }
     }
     
-    func addContribution(ideaId: UUID, content: String, isPublic: Bool = true) {
-        guard let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
+    func addContribution(ideaId: UUID, content: String, isPublic: Bool = true, voicePath: String? = nil) {
+        guard let userId = currentUserId, let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
         let idea = ideas[index]
-        let contribution = Contribution(authorDisplayName: currentUserName, content: content, isPublic: isPublic)
+        let contribution = Contribution(authorDisplayName: currentUserName, content: content, isPublic: isPublic, voicePath: voicePath, authorId: userId)
         ideas[index].contributions.append(contribution)
         Task {
             try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[index].contributions, attachments: ideas[index].attachments)
@@ -416,15 +416,17 @@ final class IdeaStore: ObservableObject {
         }
     }
     
-    func addComment(ideaId: UUID, contributionId: UUID, content: String) {
+    func addComment(ideaId: UUID, contributionId: UUID, content: String, voicePath: String? = nil) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
+        let hasContent = !trimmed.isEmpty || voicePath != nil
+        guard hasContent,
+              let userId = currentUserId,
               let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
               let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }) else { return }
         var idea = ideas[ideaIndex]
         var contrib = idea.contributions[contribIndex]
         let authorName = contrib.authorDisplayName
-        contrib.comments.append(Comment(authorDisplayName: currentUserName, content: trimmed))
+        contrib.comments.append(Comment(authorDisplayName: currentUserName, content: trimmed, voicePath: voicePath, authorId: userId))
         idea.contributions[contribIndex] = contrib
         ideas[ideaIndex] = idea
         Task {
@@ -484,6 +486,95 @@ final class IdeaStore: ObservableObject {
     
     func didCurrentUserLike(contribution: Contribution) -> Bool {
         currentUserReactionType(for: contribution) == ReactionType.heart.rawValue
+    }
+    
+    /// Returns whether the current user can edit/delete this contribution (author).
+    func canCurrentUserEditContribution(_ contribution: Contribution) -> Bool {
+        guard let userId = currentUserId else { return false }
+        if let aid = contribution.authorId { return aid == userId }
+        return contribution.authorDisplayName == currentUserName
+    }
+    
+    /// Returns whether the current user can edit/delete this comment.
+    func canCurrentUserEditComment(_ comment: Comment) -> Bool {
+        guard let userId = currentUserId else { return false }
+        if let aid = comment.authorId { return aid == userId }
+        return comment.authorDisplayName == currentUserName
+    }
+    
+    func updateContribution(ideaId: UUID, contributionId: UUID, newContent: String, newVoicePath: String?) {
+        guard let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
+              let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }),
+              canCurrentUserEditContribution(ideas[ideaIndex].contributions[contribIndex]) else { return }
+        ideas[ideaIndex].contributions[contribIndex].content = newContent
+        ideas[ideaIndex].contributions[contribIndex].voicePath = newVoicePath
+        ideas[ideaIndex].contributions[contribIndex].editedAt = Date()
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
+    }
+    
+    func deleteContribution(ideaId: UUID, contributionId: UUID) {
+        guard let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
+              let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }),
+              canCurrentUserEditContribution(ideas[ideaIndex].contributions[contribIndex]) else { return }
+        ideas[ideaIndex].contributions.remove(at: contribIndex)
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
+    }
+    
+    func updateComment(ideaId: UUID, contributionId: UUID, commentId: UUID, newContent: String, newVoicePath: String?) {
+        guard let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
+              let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }),
+              let commentIndex = ideas[ideaIndex].contributions[contribIndex].comments.firstIndex(where: { $0.id == commentId }),
+              canCurrentUserEditComment(ideas[ideaIndex].contributions[contribIndex].comments[commentIndex]) else { return }
+        ideas[ideaIndex].contributions[contribIndex].comments[commentIndex].content = newContent
+        ideas[ideaIndex].contributions[contribIndex].comments[commentIndex].voicePath = newVoicePath
+        ideas[ideaIndex].contributions[contribIndex].comments[commentIndex].editedAt = Date()
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
+    }
+    
+    func deleteComment(ideaId: UUID, contributionId: UUID, commentId: UUID) {
+        guard let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
+              let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }),
+              let commentIndex = ideas[ideaIndex].contributions[contribIndex].comments.firstIndex(where: { $0.id == commentId }),
+              canCurrentUserEditComment(ideas[ideaIndex].contributions[contribIndex].comments[commentIndex]) else { return }
+        ideas[ideaIndex].contributions[contribIndex].comments.remove(at: commentIndex)
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
+    }
+    
+    /// Upload voice audio for an idea; returns storage path e.g. "ideas/ideaId/voice.m4a".
+    func uploadVoiceForIdea(ideaId: UUID, fileURL: URL) async throws -> String {
+        let data = try Data(contentsOf: fileURL)
+        let fileName = "voice.m4a"
+        _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: fileName)
+        return "ideas/\(ideaId.uuidString)/\(fileName)"
+    }
+    
+    /// Upload voice audio for a contribution; returns storage path.
+    func uploadVoiceForContribution(ideaId: UUID, fileURL: URL) async throws -> String {
+        let data = try Data(contentsOf: fileURL)
+        let fileName = "voice_\(UUID().uuidString).m4a"
+        _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: fileName)
+        return "ideas/\(ideaId.uuidString)/\(fileName)"
+    }
+    
+    /// Upload voice audio for a comment; returns storage path.
+    func uploadVoiceForComment(ideaId: UUID, fileURL: URL) async throws -> String {
+        let data = try Data(contentsOf: fileURL)
+        let fileName = "voice_comment_\(UUID().uuidString).m4a"
+        _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: fileName)
+        return "ideas/\(ideaId.uuidString)/\(fileName)"
+    }
+    
+    /// Signed URL for playing a voice recording (idea, contribution, or comment voice path).
+    func voiceURL(storagePath: String) async -> URL? {
+        try? await SupabaseService.downloadURL(forStoragePath: storagePath)
     }
     
     func updateIdeaContent(ideaId: UUID, newContent: String) {

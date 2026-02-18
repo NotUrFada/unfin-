@@ -66,20 +66,26 @@ struct Attachment: Codable, Identifiable {
 struct Comment: Codable, Identifiable {
     let id: UUID
     let authorDisplayName: String
-    let content: String
+    var content: String
     let createdAt: Date
     var reactions: [Reaction]
+    var voicePath: String?
+    var authorId: UUID?
+    var editedAt: Date?
     
-    init(id: UUID = UUID(), authorDisplayName: String, content: String, createdAt: Date = Date(), reactions: [Reaction] = []) {
+    init(id: UUID = UUID(), authorDisplayName: String, content: String, createdAt: Date = Date(), reactions: [Reaction] = [], voicePath: String? = nil, authorId: UUID? = nil, editedAt: Date? = nil) {
         self.id = id
         self.authorDisplayName = authorDisplayName
         self.content = content
         self.createdAt = createdAt
         self.reactions = reactions
+        self.voicePath = voicePath
+        self.authorId = authorId
+        self.editedAt = editedAt
     }
     
     enum CodingKeys: String, CodingKey {
-        case id, authorDisplayName, content, createdAt, reactions
+        case id, authorDisplayName, content, createdAt, reactions, voicePath, authorId, editedAt
     }
     
     init(from decoder: Decoder) throws {
@@ -89,6 +95,9 @@ struct Comment: Codable, Identifiable {
         content = try c.decode(String.self, forKey: .content)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         reactions = try c.decodeIfPresent([Reaction].self, forKey: .reactions) ?? []
+        voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
+        authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
+        editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -98,6 +107,9 @@ struct Comment: Codable, Identifiable {
         try c.encode(content, forKey: .content)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(reactions, forKey: .reactions)
+        try c.encodeIfPresent(voicePath, forKey: .voicePath)
+        try c.encodeIfPresent(authorId, forKey: .authorId)
+        try c.encodeIfPresent(editedAt, forKey: .editedAt)
     }
     
     func count(for type: String) -> Int { reactions.filter { $0.type == type }.count }
@@ -155,12 +167,15 @@ enum ReactionStickers {
 struct Contribution: Codable, Identifiable {
     let id: UUID
     let authorDisplayName: String
-    let content: String
+    var content: String
     let createdAt: Date
     var isPublic: Bool
     var likedByAccountIds: [UUID] // legacy; kept for decode migration
     var reactions: [Reaction]
     var comments: [Comment]
+    var voicePath: String?
+    var authorId: UUID?
+    var editedAt: Date?
     
     init(
         id: UUID = UUID(),
@@ -170,7 +185,10 @@ struct Contribution: Codable, Identifiable {
         isPublic: Bool = true,
         likedByAccountIds: [UUID] = [],
         reactions: [Reaction] = [],
-        comments: [Comment] = []
+        comments: [Comment] = [],
+        voicePath: String? = nil,
+        authorId: UUID? = nil,
+        editedAt: Date? = nil
     ) {
         self.id = id
         self.authorDisplayName = authorDisplayName
@@ -180,6 +198,9 @@ struct Contribution: Codable, Identifiable {
         self.likedByAccountIds = likedByAccountIds
         self.reactions = reactions
         self.comments = comments
+        self.voicePath = voicePath
+        self.authorId = authorId
+        self.editedAt = editedAt
     }
     
     func count(for type: String) -> Int {
@@ -190,7 +211,7 @@ struct Contribution: Codable, Identifiable {
     var totalReactionCount: Int { reactions.count }
     
     enum CodingKeys: String, CodingKey {
-        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, reactions, comments
+        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, reactions, comments, voicePath, authorId, editedAt
     }
     
     init(from decoder: Decoder) throws {
@@ -208,6 +229,9 @@ struct Contribution: Codable, Identifiable {
         likedByAccountIds = []
         reactions = decodedReactions
         comments = try c.decodeIfPresent([Comment].self, forKey: .comments) ?? []
+        voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
+        authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
+        editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -220,6 +244,9 @@ struct Contribution: Codable, Identifiable {
         try c.encode(likedByAccountIds, forKey: .likedByAccountIds)
         try c.encode(reactions, forKey: .reactions)
         try c.encode(comments, forKey: .comments)
+        try c.encodeIfPresent(voicePath, forKey: .voicePath)
+        try c.encodeIfPresent(authorId, forKey: .authorId)
+        try c.encodeIfPresent(editedAt, forKey: .editedAt)
     }
 }
 
@@ -227,6 +254,8 @@ struct Idea: Codable, Identifiable {
     let id: UUID
     var categoryId: UUID
     var content: String
+    /// Optional storage path for voice-recorded idea (e.g. "ideas/<id>/voice.m4a").
+    var voicePath: String?
     /// Stable author identity; use this (not display name) to determine "my ideas" so they persist after name change.
     var authorId: UUID?
     var authorDisplayName: String
@@ -238,6 +267,7 @@ struct Idea: Codable, Identifiable {
         id: UUID = UUID(),
         categoryId: UUID,
         content: String,
+        voicePath: String? = nil,
         authorId: UUID? = nil,
         authorDisplayName: String,
         createdAt: Date = Date(),
@@ -247,6 +277,7 @@ struct Idea: Codable, Identifiable {
         self.id = id
         self.categoryId = categoryId
         self.content = content
+        self.voicePath = voicePath
         self.authorId = authorId
         self.authorDisplayName = authorDisplayName
         self.createdAt = createdAt
@@ -255,7 +286,7 @@ struct Idea: Codable, Identifiable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case id, categoryId, category, content, authorId, authorDisplayName, createdAt, contributions, attachments
+        case id, categoryId, category, content, voicePath, authorId, authorDisplayName, createdAt, contributions, attachments
     }
     
     init(from decoder: Decoder) throws {
@@ -269,6 +300,7 @@ struct Idea: Codable, Identifiable {
             categoryId = Category.melodyId
         }
         content = try c.decode(String.self, forKey: .content)
+        voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
         authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
         authorDisplayName = try c.decode(String.self, forKey: .authorDisplayName)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
@@ -281,6 +313,7 @@ struct Idea: Codable, Identifiable {
         try c.encode(id, forKey: .id)
         try c.encode(categoryId, forKey: .categoryId)
         try c.encode(content, forKey: .content)
+        try c.encodeIfPresent(voicePath, forKey: .voicePath)
         try c.encodeIfPresent(authorId, forKey: .authorId)
         try c.encode(authorDisplayName, forKey: .authorDisplayName)
         try c.encode(createdAt, forKey: .createdAt)

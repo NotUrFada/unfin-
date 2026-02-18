@@ -72,6 +72,7 @@ private struct IdeaRow: Codable {
     let id: UUID
     let categoryId: UUID
     let content: String
+    let voicePath: String?
     let authorId: UUID
     let authorDisplayName: String
     let createdAt: Date
@@ -79,12 +80,37 @@ private struct IdeaRow: Codable {
     let attachments: [AttachmentRow]
     
     enum CodingKeys: String, CodingKey {
-        case id, content
+        case id, content, voicePath = "voice_path"
         case categoryId = "category_id"
         case authorId = "author_id"
         case authorDisplayName = "author_display_name"
         case createdAt = "created_at"
         case contributions, attachments
+    }
+    
+    init(id: UUID, categoryId: UUID, content: String, voicePath: String? = nil, authorId: UUID, authorDisplayName: String, createdAt: Date, contributions: [ContributionRow], attachments: [AttachmentRow]) {
+        self.id = id
+        self.categoryId = categoryId
+        self.content = content
+        self.voicePath = voicePath
+        self.authorId = authorId
+        self.authorDisplayName = authorDisplayName
+        self.createdAt = createdAt
+        self.contributions = contributions
+        self.attachments = attachments
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        categoryId = try c.decode(UUID.self, forKey: .categoryId)
+        content = try c.decode(String.self, forKey: .content)
+        voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
+        authorId = try c.decode(UUID.self, forKey: .authorId)
+        authorDisplayName = try c.decode(String.self, forKey: .authorDisplayName)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        contributions = try c.decode([ContributionRow].self, forKey: .contributions)
+        attachments = try c.decode([AttachmentRow].self, forKey: .attachments)
     }
 }
 
@@ -96,12 +122,59 @@ private struct ContributionRow: Codable {
     let isPublic: Bool
     let reactions: [ReactionRow]
     let comments: [CommentRow]
+    let voicePath: String?
+    let authorId: UUID?
+    let editedAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id, content, createdAt = "created_at"
         case authorDisplayName = "author_display_name"
         case isPublic = "is_public"
         case reactions, comments
+        case voicePath = "voice_path"
+        case authorId = "author_id"
+        case editedAt = "edited_at"
+    }
+    
+    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, isPublic: Bool, reactions: [ReactionRow], comments: [CommentRow], voicePath: String? = nil, authorId: UUID? = nil, editedAt: Date? = nil) {
+        self.id = id
+        self.authorDisplayName = authorDisplayName
+        self.content = content
+        self.createdAt = createdAt
+        self.isPublic = isPublic
+        self.reactions = reactions
+        self.comments = comments
+        self.voicePath = voicePath
+        self.authorId = authorId
+        self.editedAt = editedAt
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        authorDisplayName = try c.decode(String.self, forKey: .authorDisplayName)
+        content = try c.decode(String.self, forKey: .content)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        isPublic = try c.decodeIfPresent(Bool.self, forKey: .isPublic) ?? true
+        reactions = try c.decodeIfPresent([ReactionRow].self, forKey: .reactions) ?? []
+        comments = try c.decodeIfPresent([CommentRow].self, forKey: .comments) ?? []
+        voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
+        authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
+        editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(authorDisplayName, forKey: .authorDisplayName)
+        try c.encode(content, forKey: .content)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(isPublic, forKey: .isPublic)
+        try c.encode(reactions, forKey: .reactions)
+        try c.encode(comments, forKey: .comments)
+        try c.encodeIfPresent(voicePath, forKey: .voicePath)
+        try c.encodeIfPresent(authorId, forKey: .authorId)
+        try c.encodeIfPresent(editedAt, forKey: .editedAt)
     }
 }
 
@@ -118,20 +191,29 @@ private struct ReactionRow: Codable {
 private struct CommentRow: Codable {
     let id: UUID
     let authorDisplayName: String
-    let content: String
+    var content: String
     let createdAt: Date
     let reactions: [ReactionRow]
-    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, reactions: [ReactionRow] = []) {
+    let voicePath: String?
+    let authorId: UUID?
+    let editedAt: Date?
+    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, reactions: [ReactionRow] = [], voicePath: String? = nil, authorId: UUID? = nil, editedAt: Date? = nil) {
         self.id = id
         self.authorDisplayName = authorDisplayName
         self.content = content
         self.createdAt = createdAt
         self.reactions = reactions
+        self.voicePath = voicePath
+        self.authorId = authorId
+        self.editedAt = editedAt
     }
     enum CodingKeys: String, CodingKey {
         case id, content, reactions
         case authorDisplayName = "author_display_name"
         case createdAt = "created_at"
+        case voicePath = "voice_path"
+        case authorId = "author_id"
+        case editedAt = "edited_at"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -140,6 +222,9 @@ private struct CommentRow: Codable {
         content = try c.decode(String.self, forKey: .content)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         reactions = try c.decodeIfPresent([ReactionRow].self, forKey: .reactions) ?? []
+        voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
+        authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
+        editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -148,6 +233,9 @@ private struct CommentRow: Codable {
         try c.encode(content, forKey: .content)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(reactions, forKey: .reactions)
+        try c.encodeIfPresent(voicePath, forKey: .voicePath)
+        try c.encodeIfPresent(authorId, forKey: .authorId)
+        try c.encodeIfPresent(editedAt, forKey: .editedAt)
     }
 }
 
@@ -309,10 +397,11 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
         id: row.id,
         categoryId: row.categoryId,
         content: row.content,
+        voicePath: row.voicePath,
         authorId: row.authorId,
         authorDisplayName: row.authorDisplayName,
         createdAt: row.createdAt,
-        contributions: row.contributions.compactMap { c in
+        contributions: row.contributions.map { c in
             Contribution(
                 id: c.id,
                 authorDisplayName: c.authorDisplayName,
@@ -320,7 +409,21 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
                 createdAt: c.createdAt,
                 isPublic: c.isPublic,
                 reactions: c.reactions.map { r in Reaction(id: r.id, accountId: r.accountId, type: r.type) },
-                comments: c.comments.map { com in Comment(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in Reaction(id: r.id, accountId: r.accountId, type: r.type) }) }
+                comments: c.comments.map { com in
+                    Comment(
+                        id: com.id,
+                        authorDisplayName: com.authorDisplayName,
+                        content: com.content,
+                        createdAt: com.createdAt,
+                        reactions: com.reactions.map { r in Reaction(id: r.id, accountId: r.accountId, type: r.type) },
+                        voicePath: com.voicePath,
+                        authorId: com.authorId,
+                        editedAt: com.editedAt
+                    )
+                },
+                voicePath: c.voicePath,
+                authorId: c.authorId,
+                editedAt: c.editedAt
             )
         },
         attachments: row.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } }
@@ -342,17 +445,17 @@ extension SupabaseService {
     }
     
     static func addIdea(_ idea: Idea, authorId: UUID) async throws {
-        // Insert payload omits created_at so Postgres uses default now() (avoids Date encoding issues)
         struct InsertIdeaPayload: Encodable {
             let id: UUID
             let categoryId: UUID
             let content: String
+            let voicePath: String?
             let authorId: UUID
             let authorDisplayName: String
             let contributions: [ContributionRow]
             let attachments: [AttachmentRow]
             enum CodingKeys: String, CodingKey {
-                case id, content, contributions, attachments
+                case id, content, voicePath = "voice_path", contributions, attachments
                 case categoryId = "category_id"
                 case authorId = "author_id"
                 case authorDisplayName = "author_display_name"
@@ -362,6 +465,7 @@ extension SupabaseService {
             id: idea.id,
             categoryId: idea.categoryId,
             content: idea.content,
+            voicePath: idea.voicePath,
             authorId: authorId,
             authorDisplayName: idea.authorDisplayName,
             contributions: idea.contributions.map { c in
@@ -372,7 +476,10 @@ extension SupabaseService {
                     createdAt: c.createdAt,
                     isPublic: c.isPublic,
                     reactions: c.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) },
-                    comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }) }
+                    comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }, voicePath: com.voicePath, authorId: com.authorId, editedAt: com.editedAt) },
+                    voicePath: c.voicePath,
+                    authorId: c.authorId,
+                    editedAt: c.editedAt
                 )
             },
             attachments: idea.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
@@ -389,7 +496,10 @@ extension SupabaseService {
                 createdAt: c.createdAt,
                 isPublic: c.isPublic,
                 reactions: c.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) },
-                comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }) }
+                comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }, voicePath: com.voicePath, authorId: com.authorId, editedAt: com.editedAt) },
+                voicePath: c.voicePath,
+                authorId: c.authorId,
+                editedAt: c.editedAt
             )
         }
         let attachmentsData = attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }

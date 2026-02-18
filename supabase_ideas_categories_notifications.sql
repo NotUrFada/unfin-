@@ -1,17 +1,19 @@
 -- Run this in Supabase: Dashboard → SQL Editor → New query → paste → Run
 -- Creates tables needed for ideas, feed, explore, and profile. Run after supabase_profiles_only.sql (or with full SUPABASE_SETUP.md Section 3).
 
--- Ideas
+-- Ideas (voice_path: optional storage path for voice-recorded idea)
 create table if not exists public.ideas (
   id uuid primary key default gen_random_uuid(),
   category_id uuid not null,
   content text not null,
+  voice_path text,
   author_id uuid not null,
   author_display_name text not null,
   created_at timestamptz not null default now(),
   contributions jsonb not null default '[]',
   attachments jsonb not null default '[]'
 );
+alter table public.ideas add column if not exists voice_path text;
 
 -- Categories
 create table if not exists public.categories (

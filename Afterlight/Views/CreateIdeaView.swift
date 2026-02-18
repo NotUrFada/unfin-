@@ -43,8 +43,11 @@ struct CreateIdeaView: View {
     @State private var newCategoryName = ""
     @State private var newCategoryVerb = "Complete"
     
+    @StateObject private var voiceRecorder = VoiceRecorder()
+    @State private var recordedVoiceURL: URL?
+    
     private var hasContent: Bool {
-        !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || recordedVoiceURL != nil
     }
     
     var body: some View {
@@ -205,11 +208,71 @@ struct CreateIdeaView: View {
                 .font(.system(size: 16))
                 .foregroundStyle(Color.white)
                 .scrollContentBackground(.hidden)
-                .frame(minHeight: 160)
+                .frame(minHeight: 120)
                 .padding(16)
                 .background(Color.white.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
+            Text("Or record with your voice")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.white.opacity(0.7))
+            HStack(spacing: 12) {
+                if voiceRecorder.isRecording {
+                    Button {
+                        if let url = voiceRecorder.stop() {
+                            recordedVoiceURL = url
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "stop.circle.fill")
+                                .font(.system(size: 24))
+                            Text("Stop")
+                                .font(.system(size: 15, weight: .medium))
+                        }
+                        .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    Text("Recording…")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                } else if recordedVoiceURL != nil {
+                    Text("Voice recorded")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.white.opacity(0.9))
+                    Button {
+                        recordedVoiceURL = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Color.white.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        voiceRecorder.requestPermission { granted in
+                            guard granted else { return }
+                            _ = try? voiceRecorder.start()
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 20))
+                            Text("Record voice")
+                                .font(.system(size: 15, weight: .medium))
+                        }
+                        .foregroundStyle(Color.white)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            if voiceRecorder.permissionDenied {
+                Text("Microphone access was denied. Enable it in Settings to record.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+            }
         }
     }
     
@@ -327,6 +390,7 @@ struct CreateIdeaView: View {
         let dir = store.attachmentsDirectory(for: ideaId)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var attachments: [Attachment] = []
+        let voiceURL = recordedVoiceURL
         
         Task {
             guard let authorId = store.currentUserId else {
@@ -335,6 +399,18 @@ struct CreateIdeaView: View {
                     store.postError = "You must be signed in to post."
                 }
                 return
+            }
+            var voicePath: String?
+            if let url = voiceURL {
+                do {
+                    voicePath = try await store.uploadVoiceForIdea(ideaId: ideaId, fileURL: url)
+                } catch {
+                    await MainActor.run {
+                        isPosting = false
+                        store.postError = "Failed to upload voice: \(error.localizedDescription)"
+                    }
+                    return
+                }
             }
             for item in selectedPhotoItems {
                 if let imageFile = try? await item.loadTransferable(type: ImageFile.self) {
@@ -354,10 +430,12 @@ struct CreateIdeaView: View {
                     try? FileManager.default.removeItem(at: file.localURL)
                 }
             }
+            let textContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
             let idea = Idea(
                 id: ideaId,
                 categoryId: selectedCategoryId,
-                content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+                content: textContent.isEmpty && voicePath != nil ? "Voice note" : textContent,
+                voicePath: voicePath,
                 authorId: authorId,
                 authorDisplayName: store.currentUserName,
                 attachments: attachments

@@ -32,14 +32,27 @@ struct IdeaCardView: View {
                 
                 cardContent
                 
-                if !idea.attachments.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 11))
+                if idea.voicePath != nil || !idea.attachments.isEmpty {
+                    HStack(spacing: 10) {
+                        if idea.voicePath != nil {
+                            HStack(spacing: 4) {
+                                Image(systemName: "mic.fill")
+                                    .font(.system(size: 11))
+                                Text("Voice")
+                                    .font(.system(size: 11))
+                            }
                             .foregroundStyle(Color.white.opacity(0.95))
-                        Text("\(idea.attachments.count) attachment\(idea.attachments.count == 1 ? "" : "s")")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.white.opacity(0.95))
+                        }
+                        if !idea.attachments.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "paperclip")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.white.opacity(0.95))
+                                Text("\(idea.attachments.count) attachment\(idea.attachments.count == 1 ? "" : "s")")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.white.opacity(0.95))
+                            }
+                        }
                     }
                 }
                 

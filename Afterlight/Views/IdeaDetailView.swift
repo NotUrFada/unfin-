@@ -20,6 +20,9 @@ struct IdeaDetailView: View {
     @State private var expandedCommentContributionId: UUID?
     @FocusState private var focusField: Bool
     
+    @StateObject private var completionVoiceRecorder = VoiceRecorder()
+    @State private var completionRecordedVoiceURL: URL?
+    
     private var ideaToShow: Idea? {
         store.idea(byId: ideaId)
     }
@@ -117,6 +120,11 @@ struct IdeaDetailView: View {
                         .lineSpacing(6)
                         .foregroundStyle(.white)
                     
+                    if let voicePath = idea.voicePath {
+                        VoicePlaybackView(storagePath: voicePath)
+                            .environmentObject(store)
+                    }
+                    
                     if !idea.attachments.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Attachments")
@@ -145,8 +153,17 @@ struct IdeaDetailView: View {
                                             expandedCommentContributionId = expandedCommentContributionId == c.id ? nil : c.id
                                         }
                                     },
-                                    onSubmitComment: { draft in
-                                        store.addComment(ideaId: idea.id, contributionId: c.id, content: draft)
+                                    onSubmitComment: { draft, voiceFileURL in
+                                        if let url = voiceFileURL {
+                                            Task {
+                                                let path = try? await store.uploadVoiceForComment(ideaId: idea.id, fileURL: url)
+                                                await MainActor.run {
+                                                    store.addComment(ideaId: idea.id, contributionId: c.id, content: draft, voicePath: path)
+                                                }
+                                            }
+                                        } else {
+                                            store.addComment(ideaId: idea.id, contributionId: c.id, content: draft)
+                                        }
                                     }
                                 )
                             }
@@ -169,12 +186,13 @@ struct IdeaDetailView: View {
                             .font(.system(size: 16))
                             .foregroundStyle(.white)
                             .scrollContentBackground(.hidden)
-                            .frame(minHeight: 120)
+                            .frame(minHeight: 100)
                             .padding(16)
                             .background(Color.white.opacity(0.08))
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
                             .focused($focusField)
+                        completionVoiceRow
                     }
                     
                     Button {
@@ -192,14 +210,71 @@ struct IdeaDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     .buttonStyle(.plain)
-                    .disabled(completionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(completionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1)
+                    .disabled(!completionHasContent)
+                    .opacity(completionHasContent ? 1 : 0.6)
                     
                     Color.clear.frame(height: 40)
                 }
                 .padding(24)
             }
         }
+    }
+    
+    private var completionHasContent: Bool {
+        !completionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || completionRecordedVoiceURL != nil
+    }
+    
+    private var completionVoiceRow: some View {
+        HStack(spacing: 12) {
+            if completionVoiceRecorder.isRecording {
+                Button {
+                    completionRecordedVoiceURL = completionVoiceRecorder.stop()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.system(size: 22))
+                        Text("Stop")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                Text("Recording…")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.white.opacity(0.8))
+            } else if completionRecordedVoiceURL != nil {
+                Text("Voice recorded")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.white.opacity(0.9))
+                Button {
+                    completionRecordedVoiceURL = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.white.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    completionVoiceRecorder.requestPermission { granted in
+                        guard granted else { return }
+                        _ = try? completionVoiceRecorder.start()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 18))
+                        Text("Record voice")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(Color.white.opacity(0.9))
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
     private func categoryTag(categoryId: UUID) -> some View {
@@ -217,9 +292,29 @@ struct IdeaDetailView: View {
     
     private func submitCompletion() {
         let trimmed = completionText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        store.addContribution(ideaId: ideaId, content: trimmed, isPublic: completionIsPublic)
-        showSubmitted = true
+        guard completionHasContent else { return }
+        let voiceURL = completionRecordedVoiceURL
+        if let url = voiceURL {
+            Task {
+                do {
+                    let path = try await store.uploadVoiceForContribution(ideaId: ideaId, fileURL: url)
+                    await MainActor.run {
+                        store.addContribution(ideaId: ideaId, content: trimmed.isEmpty ? "Voice reply" : trimmed, isPublic: completionIsPublic, voicePath: path)
+                        completionRecordedVoiceURL = nil
+                        completionText = ""
+                        focusField = false
+                        showSubmitted = true
+                    }
+                } catch {
+                    await MainActor.run { store.postError = error.localizedDescription }
+                }
+            }
+        } else {
+            store.addContribution(ideaId: ideaId, content: trimmed, isPublic: completionIsPublic)
+            completionText = ""
+            focusField = false
+            showSubmitted = true
+        }
     }
 }
 
@@ -230,22 +325,42 @@ struct CompletionRowView: View {
     let contribution: Contribution
     let isCommentExpanded: Bool
     var onToggleComments: () -> Void
-    var onSubmitComment: (String) -> Void
+    var onSubmitComment: (String, URL?) -> Void
     @State private var commentDraft = ""
+    @State private var commentVoiceURL: URL?
     @State private var showStickerPicker = false
     @State private var commentIdShowingStickerPicker: UUID?
+    @StateObject private var commentVoiceRecorder = VoiceRecorder()
+    @StateObject private var editVoiceRecorder = VoiceRecorder()
+    @State private var showDeleteContribConfirm = false
+    @State private var showEditContrib = false
+    @State private var editContribDraft = ""
+    @State private var editContribVoiceURL: URL?
+    
+    private var canEditContrib: Bool { store.canCurrentUserEditContribution(contribution) }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(contribution.content)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.white)
+                    if let voicePath = contribution.voicePath {
+                        VoicePlaybackView(storagePath: voicePath)
+                            .environmentObject(store)
+                    }
+                    if !contribution.content.isEmpty {
+                        Text(contribution.content)
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white)
+                    }
                     HStack(spacing: 6) {
                         Text("— \(contribution.authorDisplayName)")
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.75))
+                        if contribution.editedAt != nil {
+                            Text("· Edited")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
                         if !contribution.isPublic {
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 10))
@@ -254,6 +369,23 @@ struct CompletionRowView: View {
                     }
                 }
                 Spacer()
+                if canEditContrib {
+                    Menu {
+                        Button(role: .destructive) {
+                            showDeleteContribConfirm = true
+                        } label: { Label("Delete", systemImage: "trash") }
+                        Button {
+                            editContribDraft = contribution.content
+                            editContribVoiceURL = nil
+                            showEditContrib = true
+                        } label: { Label("Edit", systemImage: "pencil") }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             
             if contribution.isPublic {
@@ -303,34 +435,30 @@ struct CompletionRowView: View {
                                 contributionId: contribution.id,
                                 comment: comment,
                                 showStickerPicker: commentIdShowingStickerPicker == comment.id,
-                                onToggleStickerPicker: { commentIdShowingStickerPicker = commentIdShowingStickerPicker == comment.id ? nil : comment.id }
+                                onToggleStickerPicker: { commentIdShowingStickerPicker = commentIdShowingStickerPicker == comment.id ? nil : comment.id },
+                                onEdit: { store.updateComment(ideaId: ideaId, contributionId: contribution.id, commentId: comment.id, newContent: $0, newVoicePath: $1) },
+                                onDelete: { store.deleteComment(ideaId: ideaId, contributionId: contribution.id, commentId: comment.id) }
                             )
                             .environmentObject(store)
                         }
-                        HStack(spacing: 8) {
-                            TextField("Add a comment...", text: $commentDraft)
-                                .font(.system(size: 14))
-                                .foregroundStyle(.white)
-                                .padding(10)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            Button("Post") {
-                                let text = commentDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if !text.isEmpty {
-                                    onSubmitComment(text)
-                                    commentDraft = ""
-                                }
-                            }
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .disabled(commentDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        }
+                        commentInputRow
                     }
                     .padding(.top, 4)
                 }
             }
         }
         .padding(16)
+        .alert("Delete completion?", isPresented: $showDeleteContribConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                store.deleteContribution(ideaId: ideaId, contributionId: contribution.id)
+            }
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .sheet(isPresented: $showEditContrib) {
+            editContributionSheet
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -405,6 +533,157 @@ struct CompletionRowView: View {
         .padding(.top, 4)
     }
     
+    private var commentInputRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TextField("Add a comment...", text: $commentDraft)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                Button("Post") {
+                    let text = commentDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let hasContent = !text.isEmpty || commentVoiceURL != nil
+                    if hasContent {
+                        onSubmitComment(text, commentVoiceURL)
+                        commentDraft = ""
+                        commentVoiceURL = nil
+                    }
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .disabled(commentDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && commentVoiceURL == nil)
+            }
+            HStack(spacing: 8) {
+                if commentVoiceRecorder.isRecording {
+                    Button { commentVoiceURL = commentVoiceRecorder.stop() } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.circle.fill")
+                                .foregroundStyle(.red)
+                            Text("Stop")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.9))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else if commentVoiceURL != nil {
+                    Text("Voice added")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.8))
+                    Button { commentVoiceURL = nil } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        commentVoiceRecorder.requestPermission { granted in
+                            guard granted else { return }
+                            _ = try? commentVoiceRecorder.start()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 14))
+                            Text("Voice")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundStyle(.white.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+        }
+    }
+    
+    private var editContributionSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color(white: 0.12).ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 16) {
+                    TextEditor(text: $editContribDraft)
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 100)
+                        .padding(16)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    if editVoiceRecorder.isRecording {
+                        Button { editContribVoiceURL = editVoiceRecorder.stop() } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "stop.circle.fill")
+                                    .foregroundStyle(.red)
+                                Text("Stop recording")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    } else if editContribVoiceURL != nil {
+                        HStack {
+                            Text("Voice recorded")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.white.opacity(0.9))
+                            Button { editContribVoiceURL = nil } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.white.opacity(0.7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else {
+                        Button {
+                            editVoiceRecorder.requestPermission { granted in
+                                guard granted else { return }
+                                _ = try? editVoiceRecorder.start()
+                            }
+                        } label: {
+                            Label("Record voice", systemImage: "mic.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
+                .padding(24)
+            }
+            .navigationTitle("Edit completion")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showEditContrib = false }
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let newContent = editContribDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !newContent.isEmpty || editContribVoiceURL != nil else { return }
+                        if let url = editContribVoiceURL {
+                            Task {
+                                let path = try? await store.uploadVoiceForContribution(ideaId: ideaId, fileURL: url)
+                                await MainActor.run {
+                                    store.updateContribution(ideaId: ideaId, contributionId: contribution.id, newContent: newContent.isEmpty ? "Voice reply" : newContent, newVoicePath: path)
+                                    showEditContrib = false
+                                }
+                            }
+                        } else {
+                            store.updateContribution(ideaId: ideaId, contributionId: contribution.id, newContent: newContent, newVoicePath: nil)
+                            showEditContrib = false
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .disabled(editContribDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && editContribVoiceURL == nil)
+                }
+            }
+        }
+    }
+    
     private var stickerPicker: some View {
         HStack(spacing: 12) {
             ForEach(Array(ReactionStickers.all.enumerated()), id: \.offset) { _, sticker in
@@ -432,15 +711,57 @@ private struct CommentCellView: View {
     let comment: Comment
     let showStickerPicker: Bool
     var onToggleStickerPicker: () -> Void
+    var onEdit: (String, String?) -> Void
+    var onDelete: () -> Void
+    
+    @State private var showDeleteCommentConfirm = false
+    @State private var showEditComment = false
+    @State private var editCommentDraft = ""
+    
+    private var canEditComment: Bool { store.canCurrentUserEditComment(comment) }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(comment.content)
-                .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.95))
-            Text("— \(comment.authorDisplayName)")
-                .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.6))
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let voicePath = comment.voicePath {
+                        VoicePlaybackView(storagePath: voicePath)
+                            .environmentObject(store)
+                    }
+                    if !comment.content.isEmpty {
+                        Text(comment.content)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.95))
+                    }
+                    HStack(spacing: 4) {
+                        Text("— \(comment.authorDisplayName)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.6))
+                        if comment.editedAt != nil {
+                            Text("· Edited")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                    }
+                }
+                Spacer()
+                if canEditComment {
+                    Menu {
+                        Button(role: .destructive) {
+                            showDeleteCommentConfirm = true
+                        } label: { Label("Delete", systemImage: "trash") }
+                        Button {
+                            editCommentDraft = comment.content
+                            showEditComment = true
+                        } label: { Label("Edit", systemImage: "pencil") }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             HStack(spacing: 10) {
                 commentReactionBar
             }
@@ -452,6 +773,51 @@ private struct CommentCellView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .alert("Delete comment?", isPresented: $showDeleteCommentConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) { onDelete() }
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .sheet(isPresented: $showEditComment) {
+            editCommentSheet
+        }
+    }
+    
+    private var editCommentSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color(white: 0.12).ignoresSafeArea()
+                TextField("Comment", text: $editCommentDraft, axis: .vertical)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white)
+                    .padding(16)
+                    .lineLimit(3...6)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(24)
+            }
+            .navigationTitle("Edit comment")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showEditComment = false }
+                        .foregroundStyle(.white)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let text = editCommentDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !text.isEmpty else { return }
+                        onEdit(text, comment.voicePath)
+                        showEditComment = false
+                    }
+                    .foregroundStyle(.white)
+                    .disabled(editCommentDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
     
     private var commentReactionBar: some View {

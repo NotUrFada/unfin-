@@ -32,6 +32,9 @@
 		A1B2C3D40000001A00000004 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001A00000004 /* SupabaseService.swift */; };
 		A1B2C3D40000001B00000004 /* Supabase-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001B00000004 /* Supabase-Info.plist */; };
 		A1B2C3D40000001C00000004 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001C00000004 /* AppDelegate.swift */; };
+		A1B2C3D40000001D00000004 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001D00000004 /* VoiceRecorder.swift */; };
+		A1B2C3D40000001E00000004 /* VoicePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001E00000004 /* VoicePlaybackView.swift */; };
+		A1B2C3D40000001F00000004 /* NoisyGradient.metal in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001F00000004 /* NoisyGradient.metal */; };
 		SB01CE973F427B6A00D61DEE /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = SB01CE972F427B6A00D61DEE /* Supabase */; };
 /* End PBXBuildFile section */
 
@@ -63,6 +66,9 @@
 		A1B2C3D50000001A00000004 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001B00000004 /* Supabase-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Supabase-Info.plist"; sourceTree = "<group>"; };
 		A1B2C3D50000001C00000004 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A1B2C3D50000001D00000004 /* VoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecorder.swift; sourceTree = "<group>"; };
+		A1B2C3D50000001E00000004 /* VoicePlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackView.swift; sourceTree = "<group>"; };
+		A1B2C3D50000001F00000004 /* NoisyGradient.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = NoisyGradient.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +91,7 @@
 				A1B2C3D70000000200000004 /* Models */,
 				A1B2C3D70000000300000004 /* Services */,
 				A1B2C3D70000000400000004 /* Views */,
+				A1B2C3D50000001F00000004 /* NoisyGradient.metal */,
 				A1B2C3D50000000A00000004 /* Info.plist */,
 				A1B2C3D50000001B00000004 /* Supabase-Info.plist */,
 				A1B2C3D50000000C00000004 /* Assets.xcassets */,
@@ -108,6 +115,7 @@
 			children = (
 				A1B2C3D50000000300000004 /* IdeaStore.swift */,
 				A1B2C3D50000001A00000004 /* SupabaseService.swift */,
+				A1B2C3D50000001D00000004 /* VoiceRecorder.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -138,6 +146,7 @@
 			children = (
 				A1B2C3D50000000900000004 /* IdeaCardView.swift */,
 				A1B2C3D50000001500000004 /* AuraAvatarView.swift */,
+				A1B2C3D50000001E00000004 /* VoicePlaybackView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -249,6 +258,9 @@
 				A1B2C3D40000001800000004 /* NotificationsView.swift in Sources */,
 				A1B2C3D40000001A00000004 /* SupabaseService.swift in Sources */,
 				A1B2C3D40000001C00000004 /* AppDelegate.swift in Sources */,
+				A1B2C3D40000001D00000004 /* VoiceRecorder.swift in Sources */,
+				A1B2C3D40000001E00000004 /* VoicePlaybackView.swift in Sources */,
+				A1B2C3D40000001F00000004 /* NoisyGradient.metal in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -6,6 +6,8 @@ The app uses **Supabase** for auth, database (Postgres), and storage instead of 
 
 **If ideas don’t save or don’t show in feed/explore/profile** → the `ideas` (and related) tables are missing. Run **Section 3** or `supabase_ideas_categories_notifications.sql` in **Supabase Dashboard → SQL Editor**.
 
+**Voice ideas and edit/delete** → the schema includes `voice_path` on ideas and voice/edited fields in contributions and comments (JSONB). If you already ran the SQL before, run `supabase_ideas_categories_notifications.sql` again (it uses `add column if not exists`) or run: `alter table public.ideas add column if not exists voice_path text;`
+
 ## 1. Create a Supabase project
 
 1. Go to [supabase.com](https://supabase.com) and create a project.
