@@ -41,24 +41,12 @@ struct ExploreView: View {
     
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image("Logo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
-                Text("UNFIN")
-                    .font(.system(size: 14, weight: .semibold))
-                    .tracking(-0.5)
-                    .foregroundStyle(primaryFg)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 56)
-
             Text("Explore")
                 .font(.system(size: 32, weight: .medium))
                 .tracking(-0.03)
                 .foregroundStyle(primaryFg)
                 .padding(.horizontal, 24)
+                .padding(.top, 56)
 
             Text("Browse ideas by category.")
                 .font(.system(size: 14, weight: .regular))

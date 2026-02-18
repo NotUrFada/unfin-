@@ -26,6 +26,7 @@ struct ProfileView: View {
     
     @State private var profilePath = NavigationPath()
     @State private var showChangeAura = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack(path: $profilePath) {
@@ -46,10 +47,11 @@ struct ProfileView: View {
             .navigationDestination(for: UUID.self) { id in
                 IdeaDetailView(ideaId: id)
             }
-            .navigationDestination(for: ProfileDest.self) { dest in
-                if case .settings = dest {
-                    SettingsView()
-                }
+        }
+        .fullScreenCover(isPresented: $showSettings) {
+            NavigationStack {
+                SettingsView()
+                    .environmentObject(store)
             }
         }
         .sheet(isPresented: $showChangeAura) {
@@ -79,18 +81,10 @@ struct ProfileView: View {
     
     private var header: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                Image("Logo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
-                Text("UNFIN")
-                    .font(.system(size: 14, weight: .semibold))
-                    .tracking(-0.5)
-                    .foregroundStyle(primaryFg)
+            HStack {
                 Spacer()
                 Button {
-                    profilePath.append(ProfileDest.settings)
+                    showSettings = true
                 } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 20))
@@ -199,9 +193,6 @@ struct ProfileView: View {
     }
 }
 
-private enum ProfileDest: Hashable {
-    case settings
-}
 
 #Preview {
     ProfileView(showCreateIdea: .constant(false))

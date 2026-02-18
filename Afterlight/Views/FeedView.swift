@@ -86,29 +86,19 @@ struct FeedView: View {
     
     private var header: some View {
         HStack {
-            HStack(spacing: 8) {
-                Image("Logo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
-                Text("UNFIN")
-                    .font(.system(size: 14, weight: .semibold))
-                    .tracking(-0.5)
-                    .foregroundStyle(primaryFg)
-                if store.isLoggedIn && store.currentStreak > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.orange)
-                        Text("\(store.currentStreak)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(primaryFg)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(primaryFg.opacity(surfaceOpacity))
-                    .clipShape(Capsule())
+            if store.isLoggedIn && store.currentStreak > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.orange)
+                    Text("\(store.currentStreak)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(primaryFg)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(primaryFg.opacity(surfaceOpacity))
+                .clipShape(Capsule())
             }
             Spacer()
             Button {
