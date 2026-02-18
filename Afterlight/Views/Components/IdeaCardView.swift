@@ -9,6 +9,7 @@ struct IdeaCardView: View {
     @EnvironmentObject var store: IdeaStore
     @Environment(\.colorScheme) private var colorScheme
     let idea: Idea
+    var onOpenUserProfile: ((String, UUID?) -> Void)? = nil
     var onAction: () -> Void
 
     private var isLight: Bool { colorScheme == .light }
@@ -105,19 +106,27 @@ struct IdeaCardView: View {
     }
     
     private var participantAvatars: some View {
-        let participants = Array(idea.participantDisplayNames.prefix(3))
-        let total = idea.participantDisplayNames.count
+        let destinations = Array(idea.participantDestinations.prefix(3))
+        let total = idea.participantDestinations.count
         return HStack(spacing: -8) {
-            ForEach(Array(participants.enumerated()), id: \.offset) { index, displayName in
-                let variant: Int? = displayName == store.currentUserName
+            ForEach(Array(destinations.enumerated()), id: \.offset) { index, dest in
+                let variant: Int? = dest.displayName == store.currentUserName
                     ? store.currentAccount?.auraVariant
-                    : auraVariantForDisplayName(displayName)
-                AuraAvatarView(
+                    : auraVariantForDisplayName(dest.displayName)
+                let avatar = AuraAvatarView(
                     size: 24,
                     auraVariant: variant,
-                    legacyPaletteIndex: displayName == store.currentUserName ? store.currentAccount?.auraPaletteIndex : nil
+                    legacyPaletteIndex: dest.displayName == store.currentUserName ? store.currentAccount?.auraPaletteIndex : nil
                 )
                 .overlay(Circle().stroke(primaryFg.opacity(0.15), lineWidth: 1))
+                if let onOpen = onOpenUserProfile {
+                    Button {
+                        onOpen(dest.displayName, dest.authorId)
+                    } label: { avatar }
+                    .buttonStyle(.plain)
+                } else {
+                    avatar
+                }
             }
             if total > 3 {
                 Text("+\(total - 3)")

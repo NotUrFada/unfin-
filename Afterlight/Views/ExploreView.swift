@@ -29,12 +29,22 @@ struct ExploreView: View {
                 addButton
             }
             .navigationDestination(for: Category.self) { category in
-                CategoryFeedView(category: category, showCreateIdea: $showCreateIdea) { ideaId in
+                CategoryFeedView(category: category, showCreateIdea: $showCreateIdea, onOpenUserProfile: { name, authorId in
+                    explorePath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                }) { ideaId in
                     explorePath.append(ideaId)
                 }
             }
             .navigationDestination(for: UUID.self) { ideaId in
-                IdeaDetailView(ideaId: ideaId)
+                IdeaDetailView(ideaId: ideaId, onOpenUserProfile: { name, authorId in
+                    explorePath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                })
+            }
+            .navigationDestination(for: UserProfileDestination.self) { dest in
+                UserProfileView(displayName: dest.displayName, authorId: dest.authorId) { ideaId in
+                    explorePath.append(ideaId)
+                }
+                .environmentObject(store)
             }
         }
     }
@@ -127,6 +137,7 @@ struct ExploreView: View {
 struct CategoryFeedView: View {
     let category: Category
     @Binding var showCreateIdea: Bool
+    var onOpenUserProfile: ((String, UUID?) -> Void)? = nil
     var onSelectIdea: (UUID) -> Void
     @EnvironmentObject var store: IdeaStore
     @Environment(\.colorScheme) private var colorScheme
@@ -143,7 +154,7 @@ struct CategoryFeedView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(ideas) { idea in
-                        IdeaCardView(idea: idea) {
+                        IdeaCardView(idea: idea, onOpenUserProfile: onOpenUserProfile) {
                             onSelectIdea(idea.id)
                         }
                     }

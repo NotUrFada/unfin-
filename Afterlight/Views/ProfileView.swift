@@ -23,7 +23,15 @@ struct ProfileView: View {
             return idea.authorDisplayName == store.currentUserName
         }
     }
-    
+
+    private var myContributionsCount: Int {
+        guard let userId = store.currentUserId else { return 0 }
+        return store.ideas.flatMap(\.contributions).filter { c in
+            if let cid = c.authorId { return cid == userId }
+            return c.authorDisplayName == store.currentUserName
+        }.count
+    }
+
     @State private var profilePath = NavigationPath()
     @State private var showChangeAura = false
     @State private var showSettings = false
@@ -45,7 +53,15 @@ struct ProfileView: View {
                 addButton
             }
             .navigationDestination(for: UUID.self) { id in
-                IdeaDetailView(ideaId: id)
+                IdeaDetailView(ideaId: id, onOpenUserProfile: { name, authorId in
+                    profilePath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                })
+            }
+            .navigationDestination(for: UserProfileDestination.self) { dest in
+                UserProfileView(displayName: dest.displayName, authorId: dest.authorId) { ideaId in
+                    profilePath.append(ideaId)
+                }
+                .environmentObject(store)
             }
         }
         .fullScreenCover(isPresented: $showSettings) {
@@ -160,13 +176,38 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, 24)
             }
+
+            profileStats(ideasCount: myIdeas.count, contributionsCount: myContributionsCount)
             
             Text("Ideas you started")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(secondaryFg)
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
+        .padding(.horizontal, 24)
+            .padding(.top, 8)
         }
+    }
+
+    private func profileStats(ideasCount: Int, contributionsCount: Int) -> some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 6) {
+                Text("\(ideasCount)")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(primaryFg)
+                Text("ideas shared")
+                    .font(.system(size: 13))
+                    .foregroundStyle(secondaryFg)
+            }
+            HStack(spacing: 6) {
+                Text("\(contributionsCount)")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(primaryFg)
+                Text("contributions")
+                    .font(.system(size: 13))
+                    .foregroundStyle(secondaryFg)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
     }
     
     private var myIdeasSection: some View {
@@ -182,7 +223,9 @@ struct ProfileView: View {
                     .padding(.horizontal, 24)
             } else {
                 ForEach(myIdeas) { idea in
-                    IdeaCardView(idea: idea) {
+                    IdeaCardView(idea: idea, onOpenUserProfile: { name, authorId in
+                        profilePath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                    }) {
                         profilePath.append(idea.id)
                     }
                 }

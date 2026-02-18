@@ -50,7 +50,15 @@ struct FeedView: View {
             feedContent
                 .background(BackgroundGradientView())
                 .navigationDestination(for: UUID.self) { id in
-                    IdeaDetailView(ideaId: id)
+                    IdeaDetailView(ideaId: id, onOpenUserProfile: { name, authorId in
+                        navigationPath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                    })
+                }
+                .navigationDestination(for: UserProfileDestination.self) { dest in
+                    UserProfileView(displayName: dest.displayName, authorId: dest.authorId) { ideaId in
+                        navigationPath.append(ideaId)
+                    }
+                    .environmentObject(store)
                 }
         }
         .sheet(isPresented: $showNotifications) {
@@ -86,19 +94,29 @@ struct FeedView: View {
     
     private var header: some View {
         HStack {
-            if store.isLoggedIn && store.currentStreak > 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.orange)
-                    Text("\(store.currentStreak)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(primaryFg)
+            HStack(spacing: 8) {
+                Image("Logo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
+                Text("UNFIN")
+                    .font(.system(size: 14, weight: .semibold))
+                    .tracking(-0.5)
+                    .foregroundStyle(primaryFg)
+                if store.isLoggedIn && store.currentStreak > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.orange)
+                        Text("\(store.currentStreak)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(primaryFg)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(primaryFg.opacity(surfaceOpacity))
+                    .clipShape(Capsule())
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(primaryFg.opacity(surfaceOpacity))
-                .clipShape(Capsule())
             }
             Spacer()
             Button {
@@ -156,7 +174,9 @@ struct FeedView: View {
     private var feedList: some View {
         LazyVStack(spacing: 12) {
             ForEach(filteredIdeas) { idea in
-                IdeaCardView(idea: idea) {
+                IdeaCardView(idea: idea, onOpenUserProfile: { name, authorId in
+                    navigationPath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                }) {
                     navigationPath.append(idea.id)
                 }
             }

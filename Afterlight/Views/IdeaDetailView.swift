@@ -11,8 +11,9 @@ import UniformTypeIdentifiers
 struct IdeaDetailView: View {
     @EnvironmentObject var store: IdeaStore
     @Environment(\.dismiss) private var dismiss
-    
+
     let ideaId: UUID
+    var onOpenUserProfile: ((String, UUID?) -> Void)? = nil
     @State private var completionText = ""
     @State private var completionIsPublic = true
     @State private var showSubmitted = false
@@ -37,7 +38,25 @@ struct IdeaDetailView: View {
         if let aid = idea.authorId { return aid == userId }
         return idea.authorDisplayName == store.currentUserName
     }
-    
+
+    @ViewBuilder
+    private func authorLine(idea: Idea) -> some View {
+        if let onOpen = onOpenUserProfile {
+            Button {
+                onOpen(idea.authorDisplayName, idea.authorId)
+            } label: {
+                Text("By \(idea.authorDisplayName)")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text("By \(idea.authorDisplayName)")
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.8))
+        }
+    }
+
     var body: some View {
         Group {
             if let idea = ideaToShow {
@@ -119,7 +138,9 @@ struct IdeaDetailView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.white)
                     }
-                    
+
+                    authorLine(idea: idea)
+
                     Text(idea.content)
                         .font(.system(size: 18))
                         .lineSpacing(6)
@@ -153,6 +174,7 @@ struct IdeaDetailView: View {
                                     ideaId: idea.id,
                                     contribution: c,
                                     isCommentExpanded: expandedCommentContributionId == c.id,
+                                    onOpenUserProfile: onOpenUserProfile,
                                     onToggleComments: {
                                         withAnimation(.easeInOut(duration: 0.2)) {
                                             expandedCommentContributionId = expandedCommentContributionId == c.id ? nil : c.id
@@ -457,6 +479,7 @@ struct CompletionRowView: View {
     let ideaId: UUID
     let contribution: Contribution
     let isCommentExpanded: Bool
+    var onOpenUserProfile: ((String, UUID?) -> Void)? = nil
     var onToggleComments: () -> Void
     var onSubmitComment: (String, URL?) -> Void
     @State private var commentDraft = ""
@@ -486,9 +509,20 @@ struct CompletionRowView: View {
                             .foregroundStyle(.white)
                     }
                     HStack(spacing: 6) {
-                        Text("— \(contribution.authorDisplayName)")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.75))
+                        if let onOpen = onOpenUserProfile {
+                            Button {
+                                onOpen(contribution.authorDisplayName, contribution.authorId)
+                            } label: {
+                                Text("— \(contribution.authorDisplayName)")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.white.opacity(0.75))
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text("— \(contribution.authorDisplayName)")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.75))
+                        }
                         if contribution.editedAt != nil {
                             Text("· Edited")
                                 .font(.system(size: 11))
@@ -579,6 +613,7 @@ struct CompletionRowView: View {
                                 contributionId: contribution.id,
                                 comment: comment,
                                 showStickerPicker: commentIdShowingStickerPicker == comment.id,
+                                onOpenUserProfile: onOpenUserProfile,
                                 onToggleStickerPicker: { commentIdShowingStickerPicker = commentIdShowingStickerPicker == comment.id ? nil : comment.id },
                                 onEdit: { store.updateComment(ideaId: ideaId, contributionId: contribution.id, commentId: comment.id, newContent: $0, newVoicePath: $1) },
                                 onDelete: { store.deleteComment(ideaId: ideaId, contributionId: contribution.id, commentId: comment.id) }
@@ -854,6 +889,7 @@ private struct CommentCellView: View {
     let contributionId: UUID
     let comment: Comment
     let showStickerPicker: Bool
+    var onOpenUserProfile: ((String, UUID?) -> Void)? = nil
     var onToggleStickerPicker: () -> Void
     var onEdit: (String, String?) -> Void
     var onDelete: () -> Void
@@ -878,9 +914,20 @@ private struct CommentCellView: View {
                             .foregroundStyle(.white.opacity(0.95))
                     }
                     HStack(spacing: 4) {
-                        Text("— \(comment.authorDisplayName)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.6))
+                        if let onOpen = onOpenUserProfile {
+                            Button {
+                                onOpen(comment.authorDisplayName, comment.authorId)
+                            } label: {
+                                Text("— \(comment.authorDisplayName)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.white.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text("— \(comment.authorDisplayName)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
                         if comment.editedAt != nil {
                             Text("· Edited")
                                 .font(.system(size: 10))

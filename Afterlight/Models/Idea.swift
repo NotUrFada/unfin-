@@ -255,6 +255,12 @@ struct Contribution: Codable, Identifiable {
     }
 }
 
+/// Used for navigation to another user’s profile (display name + optional author id).
+struct UserProfileDestination: Hashable {
+    let displayName: String
+    let authorId: UUID?
+}
+
 struct Idea: Codable, Identifiable {
     let id: UUID
     var categoryId: UUID
@@ -338,6 +344,25 @@ struct Idea: Codable, Identifiable {
             if !seen.contains(c.authorDisplayName) {
                 seen.insert(c.authorDisplayName)
                 out.append(c.authorDisplayName)
+            }
+        }
+        return out
+    }
+
+    /// Author first, then unique contributors (displayName + authorId). Use for “open profile” taps.
+    var participantDestinations: [UserProfileDestination] {
+        var seen = Set<String>()
+        var out: [UserProfileDestination] = []
+        let key = { (d: UserProfileDestination) in d.authorId?.uuidString ?? d.displayName }
+        if !seen.contains(key(UserProfileDestination(displayName: authorDisplayName, authorId: authorId))) {
+            seen.insert(key(UserProfileDestination(displayName: authorDisplayName, authorId: authorId)))
+            out.append(UserProfileDestination(displayName: authorDisplayName, authorId: authorId))
+        }
+        for c in contributions {
+            let dest = UserProfileDestination(displayName: c.authorDisplayName, authorId: c.authorId)
+            if !seen.contains(key(dest)) {
+                seen.insert(key(dest))
+                out.append(dest)
             }
         }
         return out

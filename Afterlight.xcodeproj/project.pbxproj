@@ -15,6 +15,7 @@
 		A1B2C3D40000000600000004 /* CreateIdeaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000600000004 /* CreateIdeaView.swift */; };
 		A1B2C3D40000000700000004 /* IdeaDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000700000004 /* IdeaDetailView.swift */; };
 		A1B2C3D40000000800000004 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000800000004 /* ProfileView.swift */; };
+		A1B2C3D40000001900000004 /* UserProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001900000004 /* UserProfileView.swift */; };
 		A1B2C3D40000000900000004 /* IdeaCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000900000004 /* IdeaCardView.swift */; };
 		A1B2C3D40000000C00000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000C00000004 /* Assets.xcassets */; };
 		A1B2C3D40000000D00000004 /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000D00000004 /* ExploreView.swift */; };
@@ -47,6 +48,7 @@
 		A1B2C3D50000000600000004 /* CreateIdeaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateIdeaView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000700000004 /* IdeaDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaDetailView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000800000004 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		A1B2C3D50000001900000004 /* UserProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000900000004 /* IdeaCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaCardView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000A00000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D50000000B00000004 /* Unfin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Unfin.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -128,6 +130,7 @@
 				A1B2C3D50000000600000004 /* CreateIdeaView.swift */,
 				A1B2C3D50000000700000004 /* IdeaDetailView.swift */,
 				A1B2C3D50000000800000004 /* ProfileView.swift */,
+				A1B2C3D50000001900000004 /* UserProfileView.swift */,
 				A1B2C3D50000000D00000004 /* ExploreView.swift */,
 				A1B2C3D50000000F00000004 /* SettingsView.swift */,
 				A1B2C3D50000001100000004 /* AuthView.swift */,
@@ -243,6 +246,7 @@
 				A1B2C3D40000000600000004 /* CreateIdeaView.swift in Sources */,
 				A1B2C3D40000000700000004 /* IdeaDetailView.swift in Sources */,
 				A1B2C3D40000000800000004 /* ProfileView.swift in Sources */,
+				A1B2C3D40000001900000004 /* UserProfileView.swift in Sources */,
 				A1B2C3D40000000900000004 /* IdeaCardView.swift in Sources */,
 				A1B2C3D40000000D00000004 /* ExploreView.swift in Sources */,
 				A1B2C3D40000000E00000004 /* Category.swift in Sources */,
