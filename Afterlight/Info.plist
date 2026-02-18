@@ -19,13 +19,15 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.1</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Unfin uses the microphone so you can record ideas, completions, and comments with your voice.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Unfin uses your photo library so you can attach images to ideas and completions.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
