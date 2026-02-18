@@ -60,6 +60,14 @@ struct AuraConfig {
     }
 }
 
+/// Deterministic aura variant from a display name so every user gets a consistent avatar without fetching their profile.
+func auraVariantForDisplayName(_ displayName: String) -> Int {
+    var hasher = Hasher()
+    hasher.combine(displayName)
+    let h = hasher.finalize()
+    return abs(h) % auraTotalVariations
+}
+
 /// Renders the user's aura as a circular avatar (profile picture).
 struct AuraAvatarView: View {
     var size: CGFloat = 44

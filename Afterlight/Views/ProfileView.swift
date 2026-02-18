@@ -12,7 +12,11 @@ struct ProfileView: View {
     @State private var editingName = false
     
     private var myIdeas: [Idea] {
-        store.ideas.filter { $0.authorDisplayName == store.currentUserName }
+        guard let userId = store.currentUserId else { return [] }
+        return store.ideas.filter { idea in
+            if let aid = idea.authorId { return aid == userId }
+            return idea.authorDisplayName == store.currentUserName
+        }
     }
     
     @State private var profilePath = NavigationPath()

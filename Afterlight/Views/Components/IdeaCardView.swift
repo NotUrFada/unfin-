@@ -90,27 +90,15 @@ struct IdeaCardView: View {
         let total = idea.participantDisplayNames.count
         return HStack(spacing: -8) {
             ForEach(Array(participants.enumerated()), id: \.offset) { index, displayName in
-                if displayName == store.currentUserName, let acc = store.currentAccount {
-                    AuraAvatarView(
-                        size: 24,
-                        auraVariant: acc.auraVariant,
-                        legacyPaletteIndex: acc.auraPaletteIndex
-                    )
-                    .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
-                } else {
-                    let initial = String(displayName.prefix(1)).uppercased()
-                    Text(initial)
-                        .font(.system(size: index == 2 && total > 3 ? 10 : 8))
-                        .foregroundStyle(Color.white.opacity(0.9))
-                        .frame(width: 24, height: 24)
-                        .background(
-                            index == 2 && total > 3
-                                ? Color.white.opacity(0.15)
-                                : Color(white: 0.18)
-                        )
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
-                }
+                let variant: Int? = displayName == store.currentUserName
+                    ? store.currentAccount?.auraVariant
+                    : auraVariantForDisplayName(displayName)
+                AuraAvatarView(
+                    size: 24,
+                    auraVariant: variant,
+                    legacyPaletteIndex: displayName == store.currentUserName ? store.currentAccount?.auraPaletteIndex : nil
+                )
+                .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
             }
             if total > 3 {
                 Text("+\(total - 3)")

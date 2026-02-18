@@ -120,10 +120,34 @@ private struct CommentRow: Codable {
     let authorDisplayName: String
     let content: String
     let createdAt: Date
+    let reactions: [ReactionRow]
+    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, reactions: [ReactionRow] = []) {
+        self.id = id
+        self.authorDisplayName = authorDisplayName
+        self.content = content
+        self.createdAt = createdAt
+        self.reactions = reactions
+    }
     enum CodingKeys: String, CodingKey {
-        case id, content
+        case id, content, reactions
         case authorDisplayName = "author_display_name"
         case createdAt = "created_at"
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        authorDisplayName = try c.decode(String.self, forKey: .authorDisplayName)
+        content = try c.decode(String.self, forKey: .content)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        reactions = try c.decodeIfPresent([ReactionRow].self, forKey: .reactions) ?? []
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(authorDisplayName, forKey: .authorDisplayName)
+        try c.encode(content, forKey: .content)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(reactions, forKey: .reactions)
     }
 }
 
@@ -285,6 +309,7 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
         id: row.id,
         categoryId: row.categoryId,
         content: row.content,
+        authorId: row.authorId,
         authorDisplayName: row.authorDisplayName,
         createdAt: row.createdAt,
         contributions: row.contributions.compactMap { c in
@@ -295,7 +320,7 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
                 createdAt: c.createdAt,
                 isPublic: c.isPublic,
                 reactions: c.reactions.map { r in Reaction(id: r.id, accountId: r.accountId, type: r.type) },
-                comments: c.comments.map { com in Comment(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt) }
+                comments: c.comments.map { com in Comment(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in Reaction(id: r.id, accountId: r.accountId, type: r.type) }) }
             )
         },
         attachments: row.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } }
@@ -347,7 +372,7 @@ extension SupabaseService {
                     createdAt: c.createdAt,
                     isPublic: c.isPublic,
                     reactions: c.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) },
-                    comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt) }
+                    comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }) }
                 )
             },
             attachments: idea.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
@@ -364,7 +389,7 @@ extension SupabaseService {
                 createdAt: c.createdAt,
                 isPublic: c.isPublic,
                 reactions: c.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) },
-                comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt) }
+                comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }) }
             )
         }
         let attachmentsData = attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
@@ -456,6 +481,17 @@ extension SupabaseService {
         for id in ids {
             try await client.from("notifications").update(ReadUpdate()).eq("id", value: id).execute()
         }
+    }
+    
+    /// Save device token for push notifications. Call when remote registration succeeds; uses current session to get app_user_id.
+    static func savePushToken(appUserId: UUID, deviceToken: Data) async throws {
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        struct Payload: Encodable {
+            let app_user_id: UUID
+            let device_token: String
+        }
+        let payload = Payload(app_user_id: appUserId, device_token: tokenString)
+        try await client.from("push_tokens").upsert(payload, onConflict: "app_user_id,device_token").execute()
     }
 }
 

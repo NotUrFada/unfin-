@@ -68,13 +68,40 @@ struct Comment: Codable, Identifiable {
     let authorDisplayName: String
     let content: String
     let createdAt: Date
+    var reactions: [Reaction]
     
-    init(id: UUID = UUID(), authorDisplayName: String, content: String, createdAt: Date = Date()) {
+    init(id: UUID = UUID(), authorDisplayName: String, content: String, createdAt: Date = Date(), reactions: [Reaction] = []) {
         self.id = id
         self.authorDisplayName = authorDisplayName
         self.content = content
         self.createdAt = createdAt
+        self.reactions = reactions
     }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, authorDisplayName, content, createdAt, reactions
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        authorDisplayName = try c.decode(String.self, forKey: .authorDisplayName)
+        content = try c.decode(String.self, forKey: .content)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        reactions = try c.decodeIfPresent([Reaction].self, forKey: .reactions) ?? []
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(authorDisplayName, forKey: .authorDisplayName)
+        try c.encode(content, forKey: .content)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(reactions, forKey: .reactions)
+    }
+    
+    func count(for type: String) -> Int { reactions.filter { $0.type == type }.count }
+    var totalReactionCount: Int { reactions.count }
 }
 
 /// A single reaction from a user (emoji type or sticker id).
@@ -200,6 +227,8 @@ struct Idea: Codable, Identifiable {
     let id: UUID
     var categoryId: UUID
     var content: String
+    /// Stable author identity; use this (not display name) to determine "my ideas" so they persist after name change.
+    var authorId: UUID?
     var authorDisplayName: String
     var createdAt: Date
     var contributions: [Contribution]
@@ -209,6 +238,7 @@ struct Idea: Codable, Identifiable {
         id: UUID = UUID(),
         categoryId: UUID,
         content: String,
+        authorId: UUID? = nil,
         authorDisplayName: String,
         createdAt: Date = Date(),
         contributions: [Contribution] = [],
@@ -217,6 +247,7 @@ struct Idea: Codable, Identifiable {
         self.id = id
         self.categoryId = categoryId
         self.content = content
+        self.authorId = authorId
         self.authorDisplayName = authorDisplayName
         self.createdAt = createdAt
         self.contributions = contributions
@@ -224,7 +255,7 @@ struct Idea: Codable, Identifiable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case id, categoryId, category, content, authorDisplayName, createdAt, contributions, attachments
+        case id, categoryId, category, content, authorId, authorDisplayName, createdAt, contributions, attachments
     }
     
     init(from decoder: Decoder) throws {
@@ -238,6 +269,7 @@ struct Idea: Codable, Identifiable {
             categoryId = Category.melodyId
         }
         content = try c.decode(String.self, forKey: .content)
+        authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
         authorDisplayName = try c.decode(String.self, forKey: .authorDisplayName)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         contributions = try c.decode([Contribution].self, forKey: .contributions)
@@ -249,6 +281,7 @@ struct Idea: Codable, Identifiable {
         try c.encode(id, forKey: .id)
         try c.encode(categoryId, forKey: .categoryId)
         try c.encode(content, forKey: .content)
+        try c.encodeIfPresent(authorId, forKey: .authorId)
         try c.encode(authorDisplayName, forKey: .authorDisplayName)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(contributions, forKey: .contributions)

@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftUI
+import UserNotifications
 
 final class IdeaStore: ObservableObject {
     @Published var ideas: [Idea] = []
@@ -24,10 +25,14 @@ final class IdeaStore: ObservableObject {
     @Published var authError: String?
     @Published var postError: String?
     @Published private(set) var currentUserProfile: FirestoreUserProfile?
+    /// Set to true after restoreSessionIfNeeded() runs so we don’t show onboarding until we know the profile.
+    @Published private(set) var hasRestoredSession = false
     
     private var ideasListener: SupabaseListenerRegistration?
     private var categoriesListener: SupabaseListenerRegistration?
     private var notificationsListener: SupabaseListenerRegistration?
+    /// IDs we've already seen so we only show a popup for newly arrived notifications.
+    private var previousNotificationIds: Set<UUID> = []
     
     private let fileURL: URL = {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -47,12 +52,17 @@ final class IdeaStore: ObservableObject {
         attachmentsDirectory(for: ideaId).appendingPathComponent(attachment.fileName)
     }
     
-    /// Returns local file URL if the file exists; otherwise fetches download URL from Supabase Storage.
+    /// Returns a local file URL so Quick Look can preview. Uses cache if present; otherwise downloads from Supabase and saves to disk.
     func attachmentURL(ideaId: UUID, attachment: Attachment) async -> URL? {
         let local = fileURL(ideaId: ideaId, attachment: attachment)
         if FileManager.default.fileExists(atPath: local.path) { return local }
         let path = "ideas/\(ideaId.uuidString)/\(attachment.fileName)"
-        return try? await SupabaseService.downloadURL(forStoragePath: path)
+        guard let remoteURL = try? await SupabaseService.downloadURL(forStoragePath: path) else { return nil }
+        // Quick Look only works with local file URLs; download and cache.
+        guard let data = try? await URLSession.shared.data(from: remoteURL).0 else { return nil }
+        try? FileManager.default.createDirectory(at: attachmentsDirectory(for: ideaId), withIntermediateDirectories: true)
+        guard (try? data.write(to: local, options: .atomic)) != nil else { return nil }
+        return local
     }
     
     @Published var notifications: [AppNotification] = []
@@ -75,6 +85,7 @@ final class IdeaStore: ObservableObject {
         #if DEBUG
         // When running from Xcode, skip restore so the app starts at the welcome screen.
         categories = Category.defaultSystemCategories
+        hasRestoredSession = true
         return
         #endif
         if await SupabaseService.currentSession != nil {
@@ -82,6 +93,7 @@ final class IdeaStore: ObservableObject {
         } else {
             categories = Category.defaultSystemCategories
         }
+        hasRestoredSession = true
     }
     
     @MainActor
@@ -123,8 +135,23 @@ final class IdeaStore: ObservableObject {
             DispatchQueue.main.async { self?.categories = list }
         }
         notificationsListener = SupabaseService.listenNotifications(targetDisplayName: currentUserName) { [weak self] list in
-            DispatchQueue.main.async { self?.notifications = list }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let newIds = Set(list.map(\.id))
+                if self.previousNotificationIds.isEmpty {
+                    self.previousNotificationIds = newIds
+                    self.notifications = list
+                    return
+                }
+                let newArrivals = list.filter { !self.previousNotificationIds.contains($0.id) && !$0.isRead }
+                self.previousNotificationIds = newIds
+                self.notifications = list
+                for n in newArrivals {
+                    self.showNotificationBanner(for: n)
+                }
+            }
         }
+        AppDelegate.requestPushPermissionAndRegister()
     }
     
     var isLoggedIn: Bool { currentUserId != nil }
@@ -154,6 +181,21 @@ final class IdeaStore: ObservableObject {
             try? await SupabaseService.markAllNotificationsRead(ids: ids)
         }
         notifications = notifications.map { var n = $0; n.isRead = true; return n }
+    }
+    
+    /// Schedules a local notification so a banner pops up for this notification (in-app or in background).
+    private func showNotificationBanner(for n: AppNotification) {
+        let content = UNMutableNotificationContent()
+        content.title = "Unfin"
+        content.body = n.summaryText
+        content.sound = .default
+        content.userInfo = ["ideaId": n.ideaId.uuidString, "notificationId": n.id.uuidString]
+        let request = UNNotificationRequest(
+            identifier: n.id.uuidString,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.2, repeats: false)
+        )
+        UNUserNotificationCenter.current().add(request)
     }
     
     var needsOnboarding: Bool {
@@ -398,6 +440,48 @@ final class IdeaStore: ObservableObject {
         return contribution.reactions.first { $0.accountId == userId }?.type
     }
     
+    func currentUserReactionType(for comment: Comment) -> String? {
+        guard let userId = currentUserId else { return nil }
+        return comment.reactions.first { $0.accountId == userId }?.type
+    }
+    
+    func toggleReactionOnComment(ideaId: UUID, contributionId: UUID, commentId: UUID, type: String) {
+        guard let userId = currentUserId,
+              let ideaIndex = ideas.firstIndex(where: { $0.id == ideaId }),
+              let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }),
+              let commentIndex = ideas[ideaIndex].contributions[contribIndex].comments.firstIndex(where: { $0.id == commentId }) else { return }
+        var idea = ideas[ideaIndex]
+        var contrib = idea.contributions[contribIndex]
+        var comment = contrib.comments[commentIndex]
+        let existingIndex = comment.reactions.firstIndex { $0.accountId == userId }
+        if let idx = existingIndex {
+            if comment.reactions[idx].type == type {
+                comment.reactions.remove(at: idx)
+            } else {
+                comment.reactions[idx] = Reaction(accountId: userId, type: type)
+            }
+        } else {
+            comment.reactions.append(Reaction(accountId: userId, type: type))
+            let authorName = comment.authorDisplayName
+            contrib.comments[commentIndex] = comment
+            idea.contributions[contribIndex] = contrib
+            ideas[ideaIndex] = idea
+            Task {
+                try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+                if authorName != currentUserName {
+                    try? await SupabaseService.addNotification(AppNotification(type: .reaction, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: authorName))
+                }
+            }
+            return
+        }
+        contrib.comments[commentIndex] = comment
+        idea.contributions[contribIndex] = contrib
+        ideas[ideaIndex] = idea
+        Task {
+            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        }
+    }
+    
     func didCurrentUserLike(contribution: Contribution) -> Bool {
         currentUserReactionType(for: contribution) == ReactionType.heart.rawValue
     }
@@ -414,7 +498,9 @@ final class IdeaStore: ObservableObject {
     func deleteIdea(ideaId: UUID) async throws {
         guard let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
         let idea = ideas[index]
-        guard idea.authorDisplayName == currentUserName else {
+        let isOwner = idea.authorId == currentUserId
+            || (idea.authorId == nil && idea.authorDisplayName == currentUserName)
+        guard isOwner else {
             throw NSError(domain: "IdeaStore", code: -1, userInfo: [NSLocalizedDescriptionKey: "You can only delete your own ideas."])
         }
         try await SupabaseService.deleteIdea(ideaId: ideaId)

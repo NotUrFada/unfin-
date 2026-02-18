@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 enum Tab: String, CaseIterable {
     case home
@@ -36,6 +37,11 @@ struct MainTabView: View {
             CreateIdeaView()
                 .environmentObject(store)
         }
+        .onAppear {
+            if store.isLoggedIn {
+                UIApplication.shared.applicationIconBadgeNumber = store.unreadNotificationCount
+            }
+        }
     }
     
     private var bottomNavBar: some View {
@@ -44,12 +50,23 @@ struct MainTabView: View {
                 Button {
                     selectedTab = tab
                 } label: {
-                    Image(systemName: iconForTab(tab))
-                        .font(.system(size: 20, weight: .medium))
-                        .frame(width: 44, height: 44)
-                        .foregroundStyle(selectedTab == tab ? Color.white : Color.white.opacity(0.6))
-                        .background(selectedTab == tab ? Color.white.opacity(0.15) : Color.clear)
-                        .clipShape(Circle())
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: iconForTab(tab))
+                            .font(.system(size: 20, weight: .medium))
+                            .frame(width: 44, height: 44)
+                            .foregroundStyle(selectedTab == tab ? Color.white : Color.white.opacity(0.6))
+                            .background(selectedTab == tab ? Color.white.opacity(0.15) : Color.clear)
+                            .clipShape(Circle())
+                        if tab == .home, store.unreadNotificationCount > 0 {
+                            Text("\(min(store.unreadNotificationCount, 99))")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(4)
+                                .background(Color.red)
+                                .clipShape(Circle())
+                                .offset(x: 6, y: -6)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
             }

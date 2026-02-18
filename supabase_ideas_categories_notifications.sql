@@ -47,6 +47,18 @@ create policy "Allow all for categories" on public.categories for all using (tru
 drop policy if exists "Allow all for notifications" on public.notifications;
 create policy "Allow all for notifications" on public.notifications for all using (true) with check (true);
 
+-- Push tokens (for iOS remote notifications)
+create table if not exists public.push_tokens (
+  id uuid primary key default gen_random_uuid(),
+  app_user_id uuid not null,
+  device_token text not null,
+  created_at timestamptz not null default now(),
+  unique(app_user_id, device_token)
+);
+alter table public.push_tokens enable row level security;
+drop policy if exists "Allow all for push_tokens" on public.push_tokens;
+create policy "Allow all for push_tokens" on public.push_tokens for all using (true) with check (true);
+
 -- Storage bucket for attachments (ignore if already exists)
 insert into storage.buckets (id, name, public)
 values ('attachments', 'attachments', false)

@@ -86,13 +86,14 @@ struct FeedView: View {
                         Text("\(min(store.unreadNotificationCount, 99))")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(.white)
-                            .padding(4)
+                            .frame(minWidth: 18, minHeight: 18)
                             .background(Color.red)
                             .clipShape(Circle())
-                            .offset(x: 8, y: -8)
+                            .offset(x: 10, y: -10)
                     }
                 }
                 .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             Text(store.currentUserName)

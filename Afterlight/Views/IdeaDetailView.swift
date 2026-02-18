@@ -25,7 +25,8 @@ struct IdeaDetailView: View {
     }
     
     private var canDelete: Bool {
-        guard let idea = ideaToShow else { return false }
+        guard let idea = ideaToShow, let userId = store.currentUserId else { return false }
+        if let aid = idea.authorId { return aid == userId }
         return idea.authorDisplayName == store.currentUserName
     }
     
@@ -232,6 +233,7 @@ struct CompletionRowView: View {
     var onSubmitComment: (String) -> Void
     @State private var commentDraft = ""
     @State private var showStickerPicker = false
+    @State private var commentIdShowingStickerPicker: UUID?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -296,18 +298,14 @@ struct CompletionRowView: View {
                             .foregroundStyle(.white.opacity(0.7))
                             .padding(.bottom, 2)
                         ForEach(contribution.comments) { comment in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(comment.content)
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.white.opacity(0.95))
-                                Text("— \(comment.authorDisplayName)")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.white.opacity(0.6))
-                            }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white.opacity(0.05))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            CommentCellView(
+                                ideaId: ideaId,
+                                contributionId: contribution.id,
+                                comment: comment,
+                                showStickerPicker: commentIdShowingStickerPicker == comment.id,
+                                onToggleStickerPicker: { commentIdShowingStickerPicker = commentIdShowingStickerPicker == comment.id ? nil : comment.id }
+                            )
+                            .environmentObject(store)
                         }
                         HStack(spacing: 8) {
                             TextField("Add a comment...", text: $commentDraft)
@@ -426,42 +424,143 @@ struct CompletionRowView: View {
     }
 }
 
+// MARK: - Comment row with like and sticker reactions
+private struct CommentCellView: View {
+    @EnvironmentObject var store: IdeaStore
+    let ideaId: UUID
+    let contributionId: UUID
+    let comment: Comment
+    let showStickerPicker: Bool
+    var onToggleStickerPicker: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(comment.content)
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.95))
+            Text("— \(comment.authorDisplayName)")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.6))
+            HStack(spacing: 10) {
+                commentReactionBar
+            }
+            if showStickerPicker {
+                commentStickerPicker
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    
+    private var commentReactionBar: some View {
+        HStack(spacing: 10) {
+            ForEach(ReactionType.allCases, id: \.rawValue) { type in
+                commentReactionButton(type: type.rawValue, symbolName: type.symbolName)
+            }
+            Button(action: onToggleStickerPicker) {
+                Image(systemName: "face.smiling.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(store.currentUserReactionType(for: comment)?.hasPrefix("sticker:") == true ? Color.orange : .white.opacity(0.8))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    private func commentReactionButton(type: String, symbolName: String) -> some View {
+        let count = comment.count(for: type)
+        let isSelected = store.currentUserReactionType(for: comment) == type
+        return Button {
+            store.toggleReactionOnComment(ideaId: ideaId, contributionId: contributionId, commentId: comment.id, type: type)
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? (type == ReactionType.heart.rawValue ? Color.red : Color.orange) : .white.opacity(0.8))
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var commentStickerPicker: some View {
+        HStack(spacing: 12) {
+            ForEach(Array(ReactionStickers.all.enumerated()), id: \.offset) { _, sticker in
+                let stickerType = "sticker:\(sticker.id)"
+                Button {
+                    store.toggleReactionOnComment(ideaId: ideaId, contributionId: contributionId, commentId: comment.id, type: stickerType)
+                    onToggleStickerPicker()
+                } label: {
+                    Text(sticker.emoji)
+                        .font(.system(size: 24))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+    }
+}
+
 struct AttachmentRowView: View {
     @EnvironmentObject var store: IdeaStore
     let ideaId: UUID
     let attachment: Attachment
     @State private var previewItem: IdentifiableURL?
     @State private var resolvedURL: URL?
+    @State private var loadTaskId = UUID()
     
     var body: some View {
         Button {
             if let url = resolvedURL {
                 previewItem = IdentifiableURL(url: url)
+            } else {
+                loadTaskId = UUID()
             }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: attachment.kind.iconName)
-                    .font(.system(size: 18))
-                    .foregroundStyle(Color.white.opacity(0.92))
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                Text(attachment.displayName)
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.white)
-                    .lineLimit(1)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 36, height: 36)
+                    if resolvedURL == nil {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.white)
+                            .scaleEffect(0.9)
+                    } else {
+                        Image(systemName: attachment.kind.iconName)
+                            .font(.system(size: 18))
+                            .foregroundStyle(Color.white.opacity(0.92))
+                    }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(attachment.displayName)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.white)
+                        .lineLimit(1)
+                    Text(resolvedURL == nil ? "Loading…" : "Tap to preview")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.white.opacity(0.6))
+                }
                 Spacer()
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Color.white.opacity(0.75))
+                if resolvedURL != nil {
+                    Image(systemName: "doc.viewfinder")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Color.white.opacity(0.75))
+                }
             }
             .padding(14)
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .disabled(resolvedURL == nil)
-        .task {
+        .task(id: loadTaskId) {
             resolvedURL = await store.attachmentURL(ideaId: ideaId, attachment: attachment)
         }
         .sheet(item: $previewItem) { item in

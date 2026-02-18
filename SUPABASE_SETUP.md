@@ -85,6 +85,10 @@ insert into storage.buckets (id, name, public) values ('attachments', 'attachmen
 create policy "Allow all for attachments" on storage.objects for all using (bucket_id = 'attachments') with check (bucket_id = 'attachments');
 ```
 
-## 4. Build and run
+## 4. Push notifications (optional)
+
+The app registers for remote push when the user is logged in and saves the device token to Supabase (`push_tokens` table). The SQL in **Section 3** (or `supabase_ideas_categories_notifications.sql`) includes the `push_tokens` table. In Xcode, add **Push Notifications** under **Signing & Capabilities** if you don’t already have it (the project includes `Unfin.entitlements` with `aps-environment`). To *send* push notifications when new rows are inserted into `notifications`, you need a server that calls APNs (e.g. a Supabase Edge Function with an Apple .p8 key, or a separate push provider).
+
+## 5. Build and run
 
 Open **Afterlight.xcodeproj** in Xcode, ensure the **Supabase** package has resolved, then build (⌘B) and run (⌘R). Sign up or log in with email/password; the app will create a profile and sync ideas, categories, and notifications with Supabase.

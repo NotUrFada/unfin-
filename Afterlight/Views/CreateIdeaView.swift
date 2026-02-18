@@ -329,6 +329,13 @@ struct CreateIdeaView: View {
         var attachments: [Attachment] = []
         
         Task {
+            guard let authorId = store.currentUserId else {
+                await MainActor.run {
+                    isPosting = false
+                    store.postError = "You must be signed in to post."
+                }
+                return
+            }
             for item in selectedPhotoItems {
                 if let imageFile = try? await item.loadTransferable(type: ImageFile.self) {
                     let fileName = "\(UUID().uuidString).jpg"
@@ -351,6 +358,7 @@ struct CreateIdeaView: View {
                 id: ideaId,
                 categoryId: selectedCategoryId,
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+                authorId: authorId,
                 authorDisplayName: store.currentUserName,
                 attachments: attachments
             )
