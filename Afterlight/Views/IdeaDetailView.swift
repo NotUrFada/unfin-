@@ -7,7 +7,6 @@ import SwiftUI
 import QuickLook
 import PhotosUI
 import UniformTypeIdentifiers
-import PencilKit
 
 struct IdeaDetailView: View {
     @EnvironmentObject var store: IdeaStore
@@ -31,9 +30,6 @@ struct IdeaDetailView: View {
     @State private var selectedCompletionPhotoItems: [PhotosPickerItem] = []
     @State private var completionPendingFiles: [PendingFile] = []
     @State private var showCompletionFileImporter = false
-    @State private var completionDrawing = PKDrawing()
-    /// Base drawing (author + previous contributions) so we upload only the user's new strokes.
-    @State private var completionDrawingBase = PKDrawing()
     
     private var ideaToShow: Idea? {
         store.idea(byId: ideaId)
@@ -335,11 +331,6 @@ struct IdeaDetailView: View {
 
                     ideaBodyContent(idea: idea)
                     
-                    if idea.drawingPath != nil || idea.contributions.contains(where: { $0.drawingPath != nil }) {
-                        IdeaDrawingSectionView(idea: idea)
-                            .environmentObject(store)
-                    }
-                    
                     if !idea.contributions.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Completions")
@@ -425,15 +416,6 @@ struct IdeaDetailView: View {
                         .background(Color.white.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
-                        if idea.drawingPath != nil || idea.contributions.contains(where: { $0.drawingPath != nil }) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Continue the drawing")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.85))
-                                DrawingCanvasView(drawing: $completionDrawing, readOnly: false)
-                                    .frame(height: 180)
-                            }
-                        }
                     }
                     .fileImporter(
                         isPresented: $showCompletionFileImporter,
@@ -480,16 +462,6 @@ struct IdeaDetailView: View {
                 }
                 .padding(24)
             }
-            .task(id: idea.id) {
-                guard !idea.isFinished,
-                      idea.drawingPath != nil || idea.contributions.contains(where: { $0.drawingPath != nil })
-                else { return }
-                let merged = await store.loadMergedDrawing(idea: idea)
-                await MainActor.run {
-                    completionDrawing = merged
-                    completionDrawingBase = merged
-                }
-            }
         }
     }
     
@@ -498,7 +470,6 @@ struct IdeaDetailView: View {
             || completionRecordedVoiceURL != nil
             || !selectedCompletionPhotoItems.isEmpty
             || !completionPendingFiles.isEmpty
-            || completionDrawing.strokes.count > completionDrawingBase.strokes.count
     }
     
     private func handleCompletionFileImport(result: Result<[URL], Error>) {
@@ -626,11 +597,7 @@ struct IdeaDetailView: View {
         let voiceURL = completionRecordedVoiceURL
         let photoItems = selectedCompletionPhotoItems
         let pendingFiles = completionPendingFiles
-        let drawingToUpload = completionDrawing
-        let baseStrokeCount = completionDrawingBase.strokes.count
-        let newStrokes = Array(drawingToUpload.strokes.dropFirst(baseStrokeCount))
-        let drawingToUploadDelta = newStrokes.isEmpty ? nil : PKDrawing(strokes: newStrokes)
-        let hasAsync = voiceURL != nil || !photoItems.isEmpty || !pendingFiles.isEmpty || drawingToUploadDelta != nil
+        let hasAsync = voiceURL != nil || !photoItems.isEmpty || !pendingFiles.isEmpty
         if hasAsync {
             Task {
                 do {
@@ -638,10 +605,6 @@ struct IdeaDetailView: View {
                     var voicePath: String? = nil
                     if let url = voiceURL {
                         voicePath = try await store.uploadVoiceForContribution(ideaId: ideaId, fileURL: url)
-                    }
-                    var drawingPath: String? = nil
-                    if let delta = drawingToUploadDelta, !delta.strokes.isEmpty, let data = try? delta.dataRepresentation() {
-                        drawingPath = try await store.uploadDrawingForContribution(ideaId: ideaId, contributionId: contribId, data: data)
                     }
                     var filesToUpload: [(url: URL, displayName: String, kind: AttachmentKind)] = pendingFiles.map { ($0.localURL, $0.displayName, $0.kind) }
                     for item in photoItems {
@@ -655,13 +618,11 @@ struct IdeaDetailView: View {
                         }
                     }
                     let attachments = try await store.uploadCompletionAttachments(ideaId: ideaId, contributionId: contribId, files: filesToUpload)
-                    let contentForContrib = trimmed.isEmpty && voicePath == nil && attachments.isEmpty && drawingPath == nil ? "Drawing" : (trimmed.isEmpty && drawingPath != nil ? "Drawing" : (trimmed.isEmpty ? "Attachment" : trimmed))
+                    let contentForContrib = trimmed.isEmpty && voicePath == nil && attachments.isEmpty ? "Attachment" : (trimmed.isEmpty ? "Attachment" : trimmed)
                     await MainActor.run {
-                        store.addContribution(ideaId: ideaId, content: contentForContrib, isPublic: completionIsPublic, voicePath: voicePath, attachments: attachments, drawingPath: drawingPath, contributionId: contribId)
+                        store.addContribution(ideaId: ideaId, content: contentForContrib, isPublic: completionIsPublic, voicePath: voicePath, attachments: attachments, contributionId: contribId)
                         completionRecordedVoiceURL = nil
                         completionText = ""
-                        completionDrawing = PKDrawing()
-                        completionDrawingBase = PKDrawing()
                         selectedCompletionPhotoItems = []
                         completionPendingFiles.forEach { try? FileManager.default.removeItem(at: $0.localURL) }
                         completionPendingFiles = []

@@ -6,7 +6,6 @@
 import Foundation
 import SwiftUI
 import UserNotifications
-import PencilKit
 
 final class IdeaStore: ObservableObject {
     @Published var ideas: [Idea] = []
@@ -835,42 +834,6 @@ final class IdeaStore: ObservableObject {
         let fileName = "voice_comment_\(UUID().uuidString).m4a"
         _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: fileName)
         return "ideas/\(ideaId.uuidString)/\(fileName)"
-    }
-    
-    /// Upload PencilKit drawing for an idea; returns storage path. Call before or after inserting idea (use same ideaId).
-    func uploadDrawingForIdea(ideaId: UUID, data: Data) async throws -> String {
-        _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: "drawing.pkdrawing")
-        return "ideas/\(ideaId.uuidString)/drawing.pkdrawing"
-    }
-    
-    /// Upload PencilKit drawing for a contribution; returns storage path.
-    func uploadDrawingForContribution(ideaId: UUID, contributionId: UUID, data: Data) async throws -> String {
-        _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: "drawing.pkdrawing", contributionId: contributionId)
-        return "ideas/\(ideaId.uuidString)/completions/\(contributionId.uuidString)/drawing.pkdrawing"
-    }
-    
-    /// Download and decode a stored drawing. Returns nil if missing or invalid.
-    func loadDrawing(storagePath: String) async -> PKDrawing? {
-        guard let url = try? await SupabaseService.downloadURL(forStoragePath: storagePath),
-              let (data, _) = try? await URLSession.shared.data(from: url),
-              let drawing = try? PKDrawing(data: data) else { return nil }
-        return drawing
-    }
-    
-    /// Load and merge all drawings for an idea (author + contributions in order). Used so completions continue on the same canvas.
-    func loadMergedDrawing(idea: Idea) async -> PKDrawing {
-        var paths: [String] = []
-        if let p = idea.drawingPath { paths.append(p) }
-        for c in idea.contributions {
-            if let p = c.drawingPath { paths.append(p) }
-        }
-        var allStrokes: [PKStroke] = []
-        for path in paths {
-            if let d = await loadDrawing(storagePath: path) {
-                allStrokes.append(contentsOf: d.strokes)
-            }
-        }
-        return PKDrawing(strokes: allStrokes)
     }
     
     /// Signed URL for playing a voice recording (idea, contribution, or comment voice path).

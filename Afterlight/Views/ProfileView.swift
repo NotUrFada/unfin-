@@ -313,7 +313,7 @@ struct ProfileView: View {
                         profilePath.append(pair.idea.id)
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
-                            let preview = pair.contribution.content.isEmpty ? "Voice or drawing" : String(pair.contribution.content.prefix(120))
+                            let preview = pair.contribution.content.isEmpty ? "Voice or attachment" : String(pair.contribution.content.prefix(120))
                             if preview.count == 120 { Text(preview + "…") } else { Text(preview) }
                                 .font(.system(size: 15))
                                 .foregroundStyle(primaryFg)

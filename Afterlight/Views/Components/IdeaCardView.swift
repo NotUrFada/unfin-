@@ -64,22 +64,13 @@ struct IdeaCardView: View {
                 
                 cardContent
                 
-                if idea.voicePath != nil || idea.drawingPath != nil || !idea.attachments.isEmpty {
+                if idea.voicePath != nil || !idea.attachments.isEmpty {
                     HStack(spacing: 10) {
                         if idea.voicePath != nil {
                             HStack(spacing: 4) {
                                 Image(systemName: "mic.fill")
                                     .font(.system(size: 11))
                                 Text("Voice")
-                                    .font(.system(size: 11))
-                            }
-                            .foregroundStyle(secondaryFg)
-                        }
-                        if idea.drawingPath != nil {
-                            HStack(spacing: 4) {
-                                Image(systemName: "pencil.tip.crop.circle")
-                                    .font(.system(size: 11))
-                                Text("Drawing")
                                     .font(.system(size: 11))
                             }
                             .foregroundStyle(secondaryFg)
