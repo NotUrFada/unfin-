@@ -5,11 +5,33 @@
 
 import SwiftUI
 
+enum AppBackgroundStyle: String, CaseIterable {
+    case black
+    case white
+    case gradient
+    
+    var displayName: String {
+        switch self {
+        case .black: return "Black"
+        case .white: return "White"
+        case .gradient: return "Gradient"
+        }
+    }
+}
+
+let appBackgroundStyleKey = "appBackgroundStyle"
+
 struct FeedView: View {
     @EnvironmentObject var store: IdeaStore
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var showCreateIdea: Bool
     var filterCategoryId: UUID? = nil
-    
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+    private var secondaryFg: Color { isLight ? Color(white: 0.35) : .white.opacity(0.9) }
+    private var surfaceOpacity: Double { isLight ? 0.12 : 0.15 }
+
     @State private var selectedFilterId: UUID? = nil
     @State private var navigationPath = NavigationPath()
     @State private var showNotifications = false
@@ -72,7 +94,7 @@ struct FeedView: View {
                 Text("UNFIN")
                     .font(.system(size: 14, weight: .semibold))
                     .tracking(-0.5)
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(primaryFg)
                 if store.isLoggedIn && store.currentStreak > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "flame.fill")
@@ -80,11 +102,11 @@ struct FeedView: View {
                             .foregroundStyle(.orange)
                         Text("\(store.currentStreak)")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(primaryFg)
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.15))
+                    .background(primaryFg.opacity(surfaceOpacity))
                     .clipShape(Capsule())
                 }
             }
@@ -95,7 +117,7 @@ struct FeedView: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bell.fill")
                         .font(.system(size: 20))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(primaryFg)
                     if store.unreadNotificationCount > 0 {
                         Text("\(min(store.unreadNotificationCount, 99))")
                             .font(.system(size: 10, weight: .bold))
@@ -112,10 +134,10 @@ struct FeedView: View {
             .buttonStyle(.plain)
             Text(store.currentUserName)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(primaryFg)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
-                .background(Color.white.opacity(0.2))
+                .background(primaryFg.opacity(0.2))
                 .clipShape(Capsule())
         }
         .padding(.horizontal, 24)
@@ -160,9 +182,9 @@ struct FeedView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(Color(white: 0.1))
+                .foregroundStyle(isLight ? Color.white : Color(white: 0.1))
                 .frame(width: 56, height: 56)
-                .background(Color.white)
+                .background(isLight ? Color(white: 0.12) : Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
         }
@@ -172,20 +194,24 @@ struct FeedView: View {
 }
 
 struct FilterTab: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let isSelected: Bool
     let action: () -> Void
-    
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13))
-                .foregroundStyle(isSelected ? Color(white: 0.12) : Color.white)
+                .foregroundStyle(isSelected ? (isLight ? Color.white : Color(white: 0.12)) : primaryFg)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isSelected ? Color.white : Color.white.opacity(0.15))
+                .background(isSelected ? primaryFg : primaryFg.opacity(0.15))
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: isSelected ? 0 : 1))
+                .overlay(Capsule().stroke(primaryFg.opacity(0.1), lineWidth: isSelected ? 0 : 1))
         }
         .buttonStyle(.plain)
     }
@@ -193,6 +219,11 @@ struct FilterTab: View {
 
 struct BackgroundGradientView: View {
     @EnvironmentObject var store: IdeaStore
+    @AppStorage(appBackgroundStyleKey) private var styleRaw: String = AppBackgroundStyle.gradient.rawValue
+
+    private var style: AppBackgroundStyle {
+        AppBackgroundStyle(rawValue: styleRaw) ?? .gradient
+    }
 
     private var auraColors: (Color, Color, Color)? {
         if let v = store.currentAccount?.auraVariant {
@@ -205,13 +236,27 @@ struct BackgroundGradientView: View {
     }
 
     var body: some View {
+        Group {
+            switch style {
+            case .black:
+                Color.black
+            case .white:
+                Color.white
+            case .gradient:
+                gradientContent
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var gradientContent: some View {
         let useAura = auraColors != nil ? Float(1.0) : Float(0.0)
         let (c1, c2, c3) = auraColors ?? (
             Color(red: 0.06, green: 0.06, blue: 0.08),
             Color(red: 0.18, green: 0.18, blue: 0.2),
             Color(red: 0.38, green: 0.38, blue: 0.42)
         )
-        TimelineView(.animation) { timeline in
+        return TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 100)
             Color.black
                 .layerEffect(
@@ -226,7 +271,6 @@ struct BackgroundGradientView: View {
                     maxSampleOffset: .zero
                 )
         }
-        .ignoresSafeArea()
     }
 }
 

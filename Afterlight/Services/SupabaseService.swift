@@ -181,6 +181,7 @@ private struct ContributionRow: Codable {
     let voicePath: String?
     let authorId: UUID?
     let editedAt: Date?
+    let attachments: [AttachmentRow]
     
     enum CodingKeys: String, CodingKey {
         case id, content, createdAt = "created_at"
@@ -190,9 +191,10 @@ private struct ContributionRow: Codable {
         case voicePath = "voice_path"
         case authorId = "author_id"
         case editedAt = "edited_at"
+        case attachments
     }
     
-    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, isPublic: Bool, reactions: [ReactionRow], comments: [CommentRow], voicePath: String? = nil, authorId: UUID? = nil, editedAt: Date? = nil) {
+    init(id: UUID, authorDisplayName: String, content: String, createdAt: Date, isPublic: Bool, reactions: [ReactionRow], comments: [CommentRow], voicePath: String? = nil, authorId: UUID? = nil, editedAt: Date? = nil, attachments: [AttachmentRow] = []) {
         self.id = id
         self.authorDisplayName = authorDisplayName
         self.content = content
@@ -203,6 +205,7 @@ private struct ContributionRow: Codable {
         self.voicePath = voicePath
         self.authorId = authorId
         self.editedAt = editedAt
+        self.attachments = attachments
     }
     
     init(from decoder: Decoder) throws {
@@ -217,6 +220,7 @@ private struct ContributionRow: Codable {
         voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
         authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
         editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
+        attachments = try c.decodeIfPresent([AttachmentRow].self, forKey: .attachments) ?? []
     }
     
     func encode(to encoder: Encoder) throws {
@@ -231,6 +235,7 @@ private struct ContributionRow: Codable {
         try c.encodeIfPresent(voicePath, forKey: .voicePath)
         try c.encodeIfPresent(authorId, forKey: .authorId)
         try c.encodeIfPresent(editedAt, forKey: .editedAt)
+        try c.encode(attachments, forKey: .attachments)
     }
 }
 
@@ -513,7 +518,8 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
                 },
                 voicePath: c.voicePath,
                 authorId: c.authorId,
-                editedAt: c.editedAt
+                editedAt: c.editedAt,
+                attachments: c.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } }
             )
         },
         attachments: row.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } }
@@ -569,7 +575,8 @@ extension SupabaseService {
                     comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }, voicePath: com.voicePath, authorId: com.authorId, editedAt: com.editedAt) },
                     voicePath: c.voicePath,
                     authorId: c.authorId,
-                    editedAt: c.editedAt
+                    editedAt: c.editedAt,
+                    attachments: c.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
                 )
             },
             attachments: idea.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
@@ -589,7 +596,8 @@ extension SupabaseService {
                 comments: c.comments.map { com in CommentRow(id: com.id, authorDisplayName: com.authorDisplayName, content: com.content, createdAt: com.createdAt, reactions: com.reactions.map { r in ReactionRow(id: r.id, accountId: r.accountId, type: r.type) }, voicePath: com.voicePath, authorId: com.authorId, editedAt: com.editedAt) },
                 voicePath: c.voicePath,
                 authorId: c.authorId,
-                editedAt: c.editedAt
+                editedAt: c.editedAt,
+                attachments: c.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
             )
         }
         let attachmentsData = attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) }
@@ -698,8 +706,14 @@ extension SupabaseService {
 // MARK: - Storage
 
 extension SupabaseService {
-    static func uploadAttachmentData(ideaId: UUID, data: Data, fileName: String) async throws -> String {
-        let path = "ideas/\(ideaId.uuidString)/\(fileName)"
+    /// Upload to ideas/ideaId/fileName, or if contributionId is set to ideas/ideaId/completions/contribId/fileName.
+    static func uploadAttachmentData(ideaId: UUID, data: Data, fileName: String, contributionId: UUID? = nil) async throws -> String {
+        let path: String
+        if let cid = contributionId {
+            path = "ideas/\(ideaId.uuidString)/completions/\(cid.uuidString)/\(fileName)"
+        } else {
+            path = "ideas/\(ideaId.uuidString)/\(fileName)"
+        }
         _ = try await client.storage.from("attachments").upload(path, data: data, options: FileOptions(upsert: true))
         return path
     }

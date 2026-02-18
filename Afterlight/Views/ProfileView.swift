@@ -7,9 +7,14 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject var store: IdeaStore
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var showCreateIdea: Bool
     @State private var displayName: String = ""
     @State private var editingName = false
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+    private var secondaryFg: Color { isLight ? Color(white: 0.4) : Color.white.opacity(0.9) }
     
     private var myIdeas: [Idea] {
         guard let userId = store.currentUserId else { return [] }
@@ -62,9 +67,9 @@ struct ProfileView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(Color(white: 0.1))
+                .foregroundStyle(isLight ? Color.white : Color(white: 0.1))
                 .frame(width: 56, height: 56)
-                .background(Color.white)
+                .background(isLight ? Color(white: 0.12) : Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
         }
@@ -82,14 +87,14 @@ struct ProfileView: View {
                 Text("UNFIN")
                     .font(.system(size: 14, weight: .semibold))
                     .tracking(-0.5)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(primaryFg)
                 Spacer()
                 Button {
                     profilePath.append(ProfileDest.settings)
                 } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 20))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryFg)
                 }
             }
             .padding(.horizontal, 24)
@@ -99,9 +104,9 @@ struct ProfileView: View {
                 HStack {
                     TextField("Display name", text: $displayName)
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryFg)
                         .padding(12)
-                        .background(Color.white.opacity(0.1))
+                        .background(primaryFg.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     Button("Save") {
                         let name = displayName.isEmpty ? "Anonymous" : displayName
@@ -113,7 +118,7 @@ struct ProfileView: View {
                         editingName = false
                     }
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(primaryFg)
                 }
                 .padding(.horizontal, 24)
             } else {
@@ -129,8 +134,8 @@ struct ProfileView: View {
                             )
                             Image(systemName: "pencil.circle.fill")
                                 .font(.system(size: 20))
-                                .foregroundStyle(.white)
-                                .background(Circle().fill(Color(white: 0.2)))
+                                .foregroundStyle(isLight ? Color(white: 0.12) : .white)
+                                .background(Circle().fill(isLight ? Color.white.opacity(0.8) : Color(white: 0.2)))
                                 .offset(x: 4, y: 4)
                         }
                     }
@@ -138,7 +143,7 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(store.currentUserName)
                             .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(primaryFg)
                         if store.currentStreak > 0 {
                             HStack(spacing: 5) {
                                 Image(systemName: "flame.fill")
@@ -146,7 +151,7 @@ struct ProfileView: View {
                                     .foregroundStyle(.orange)
                                 Text("\(store.currentStreak) day streak")
                                     .font(.system(size: 14))
-                                    .foregroundStyle(.white.opacity(0.9))
+                                    .foregroundStyle(secondaryFg)
                             }
                         }
                         Button {
@@ -154,7 +159,7 @@ struct ProfileView: View {
                         } label: {
                             Image(systemName: "pencil")
                                 .font(.system(size: 14))
-                                .foregroundStyle(.white.opacity(0.9))
+                                .foregroundStyle(secondaryFg)
                         }
                     }
                     Spacer()
@@ -164,7 +169,7 @@ struct ProfileView: View {
             
             Text("Ideas you started")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(secondaryFg)
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
         }
@@ -175,10 +180,10 @@ struct ProfileView: View {
             if myIdeas.isEmpty {
                 Text("You haven’t posted any ideas yet. Tap + to share one.")
                     .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(secondaryFg)
                     .padding(24)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.06))
+                    .background(primaryFg.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .padding(.horizontal, 24)
             } else {

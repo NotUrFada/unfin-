@@ -12,12 +12,16 @@ private enum AuthDest: Hashable {
 
 struct AuthView: View {
     @EnvironmentObject var store: IdeaStore
-    
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 BackgroundGradientView()
-                
+
                 VStack(spacing: 32) {
                     Spacer()
                     Image("Logo")
@@ -27,35 +31,35 @@ struct AuthView: View {
                     Text("UNFIN")
                         .font(.system(size: 28, weight: .semibold))
                         .tracking(-0.5)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryFg)
                     Text("Finish the story before dark.")
                         .font(.system(size: 16))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(primaryFg.opacity(0.9))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                     Spacer()
-                    
+
                     VStack(spacing: 16) {
                         NavigationLink(value: AuthDest.login) {
                             Text("Log In")
                                 .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Color(white: 0.12))
+                                .foregroundStyle(isLight ? Color.white : Color(white: 0.12))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(Color.white)
+                                .background(primaryFg)
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
                         .buttonStyle(.plain)
-                        
+
                         NavigationLink(value: AuthDest.signUp) {
                             Text("Sign Up")
                                 .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(primaryFg)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(Color.white.opacity(0.2))
+                                .background(primaryFg.opacity(0.2))
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.4), lineWidth: 1))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(primaryFg.opacity(0.4), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }

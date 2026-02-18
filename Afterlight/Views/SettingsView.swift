@@ -8,6 +8,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var store: IdeaStore
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(appBackgroundStyleKey) private var backgroundStyleRaw: String = AppBackgroundStyle.gradient.rawValue
     @State private var showDeleteConfirm = false
     @State private var showAddCategory = false
     @State private var showChangeAura = false
@@ -125,6 +126,21 @@ struct SettingsView: View {
                         .foregroundStyle(.white.opacity(0.5))
                 }
                 
+                Section {
+                    Picker("Background", selection: $backgroundStyleRaw) {
+                        ForEach(AppBackgroundStyle.allCases, id: \.rawValue) { style in
+                            Text(style.displayName).tag(style.rawValue)
+                        }
+                    }
+                    .listRowBackground(Color.white.opacity(0.08))
+                    .foregroundStyle(.white)
+                } header: {
+                    Text("Appearance").foregroundStyle(.white.opacity(0.8))
+                } footer: {
+                    Text("Black: solid dark. White: solid light. Gradient: animated gradient (and your aura when set).")
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+
                 Section {
                     HStack {
                         Text("Version")

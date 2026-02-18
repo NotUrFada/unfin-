@@ -7,9 +7,13 @@ import SwiftUI
 
 struct ExploreView: View {
     @EnvironmentObject var store: IdeaStore
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var showCreateIdea: Bool
     @State private var explorePath = NavigationPath()
-    
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+
     var body: some View {
         NavigationStack(path: $explorePath) {
             ZStack(alignment: .bottomTrailing) {
@@ -45,20 +49,20 @@ struct ExploreView: View {
                 Text("UNFIN")
                     .font(.system(size: 14, weight: .semibold))
                     .tracking(-0.5)
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(primaryFg)
             }
             .padding(.horizontal, 24)
             .padding(.top, 56)
-            
+
             Text("Explore")
                 .font(.system(size: 32, weight: .medium))
                 .tracking(-0.03)
-                .foregroundStyle(Color.white)
+                .foregroundStyle(primaryFg)
                 .padding(.horizontal, 24)
-            
+
             Text("Browse ideas by category.")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(Color.white.opacity(0.95))
+                .foregroundStyle(primaryFg.opacity(0.95))
                 .padding(.horizontal, 24)
                 .padding(.top, 4)
                 .padding(.bottom, 24)
@@ -74,27 +78,27 @@ struct ExploreView: View {
                     HStack {
                         Image(systemName: iconForCategory(category))
                             .font(.system(size: 22))
-                            .foregroundStyle(Color.white.opacity(0.9))
+                            .foregroundStyle(primaryFg.opacity(0.9))
                             .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.15))
+                            .background(primaryFg.opacity(0.15))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(category.displayName)
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color.white)
+                                .foregroundStyle(primaryFg)
                             Text("\(count(for: category)) ideas")
                                 .font(.system(size: 13))
-                                .foregroundStyle(Color.white.opacity(0.8))
+                                .foregroundStyle(primaryFg.opacity(0.8))
                         }
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.6))
+                            .foregroundStyle(primaryFg.opacity(0.6))
                     }
                     .padding(20)
-                    .background(Color.white.opacity(0.08))
+                    .background(primaryFg.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(primaryFg.opacity(0.12), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -121,9 +125,9 @@ struct ExploreView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(Color(white: 0.1))
+                .foregroundStyle(isLight ? Color.white : Color(white: 0.1))
                 .frame(width: 56, height: 56)
-                .background(Color.white)
+                .background(isLight ? Color(white: 0.12) : Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
         }
@@ -137,7 +141,11 @@ struct CategoryFeedView: View {
     @Binding var showCreateIdea: Bool
     var onSelectIdea: (UUID) -> Void
     @EnvironmentObject var store: IdeaStore
-    
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+
     private var ideas: [Idea] {
         store.ideas.filter { $0.categoryId == category.id }
     }
@@ -154,7 +162,7 @@ struct CategoryFeedView: View {
                     if ideas.isEmpty {
                         Text("No \(category.displayName.lowercased()) ideas yet. Tap + to add one.")
                             .font(.system(size: 15))
-                            .foregroundStyle(Color.white.opacity(0.9))
+                            .foregroundStyle(Color.primary.opacity(0.9))
                             .padding(24)
                             .frame(maxWidth: .infinity)
                     }
@@ -174,9 +182,9 @@ struct CategoryFeedView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 24, weight: .medium))
-                    .foregroundStyle(Color(white: 0.1))
+                    .foregroundStyle(isLight ? Color.white : Color(white: 0.1))
                     .frame(width: 56, height: 56)
-                    .background(Color.white)
+                    .background(isLight ? Color(white: 0.12) : Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
             }

@@ -7,11 +7,13 @@ import SwiftUI
 
 // 1M+ variations: 100 palettes × 360 rotation steps × 30 blur steps = 1_080_000
 private let auraPaletteCount = 100
+private let darkAuraPaletteCount = 50
 private let auraRotationSteps = 360
 private let auraBlurSteps = 30
 let auraTotalVariations = auraPaletteCount * auraRotationSteps * auraBlurSteps
+let darkAuraTotalVariations = darkAuraPaletteCount * auraRotationSteps * auraBlurSteps
 
-/// Deterministic palette from index (0..<100). Returns (Color, Color, Color).
+/// Deterministic bright palette from index (0..<100). Returns (Color, Color, Color).
 private func auraPalette(at index: Int) -> (Color, Color, Color) {
     let i = index % auraPaletteCount
     // Spread hues; vary saturation/lightness for distinct triples
@@ -27,6 +29,22 @@ private func auraPalette(at index: Int) -> (Color, Color, Color) {
     )
 }
 
+/// Deterministic dark palette from index (0..<50). Returns (Color, Color, Color).
+private func darkAuraPalette(at index: Int) -> (Color, Color, Color) {
+    let i = index % darkAuraPaletteCount
+    // Very dark colors with a touch of hue; more black, richer shadows
+    let hue1 = Double((i * 137) % 360) / 360.0
+    let hue2 = Double((i * 97 + 120) % 360) / 360.0
+    let hue3 = Double((i * 67 + 240) % 360) / 360.0
+    let s: Double = 0.5 + Double(i % 30) / 100.0
+    let b: Double = 0.05 + Double(i % 15) / 100.0 // 0.05–0.20 base (more black)
+    return (
+        Color(hue: hue1, saturation: min(1, s), brightness: b),
+        Color(hue: hue2, saturation: min(1, s * 0.95), brightness: min(0.22, b + 0.08)),
+        Color(hue: hue3, saturation: min(1, s * 0.9), brightness: min(0.28, b + 0.12))
+    )
+}
+
 /// Legacy 3 palettes from onboarding (for accounts without auraVariant).
 private let legacyAuraPalettes: [(Color, Color, Color)] = [
     (Color(red: 0.63, green: 0.77, blue: 1), Color(red: 0.79, green: 1, blue: 0.75), Color(red: 0.99, green: 1, blue: 0.71)),
@@ -38,16 +56,72 @@ struct AuraConfig {
     let colors: (Color, Color, Color)
     let rotationDegrees: Double
     let blurRadius: CGFloat
+    let isDark: Bool
+
+    init(colors: (Color, Color, Color), rotationDegrees: Double = 0, blurRadius: CGFloat = 60, isDark: Bool = false) {
+        self.colors = colors
+        self.rotationDegrees = rotationDegrees
+        self.blurRadius = blurRadius
+        self.isDark = isDark
+    }
+
+    /// Custom color variants: base + (c1<<18)|(c2<<9)|c3, each c = 9 bits (3 bits R,G,B = 0–7).
+    private static let customColorBase = 2_000_000_000
+
+    static func encodeCustomColors(_ c1: Color, _ c2: Color, _ c3: Color) -> Int {
+        func pack(_ color: Color) -> Int {
+            let r = (color.components.red * 7.999).rounded(.down); let ri = max(0, min(7, Int(r)))
+            let g = (color.components.green * 7.999).rounded(.down); let gi = max(0, min(7, Int(g)))
+            let b = (color.components.blue * 7.999).rounded(.down); let bi = max(0, min(7, Int(b)))
+            return (ri << 6) | (gi << 3) | bi
+        }
+        return customColorBase + (pack(c1) << 18) + (pack(c2) << 9) + pack(c3)
+    }
+
+    static func decodeCustomColors(from variant: Int) -> (Color, Color, Color)? {
+        guard variant >= customColorBase else { return nil }
+        let val = variant - customColorBase
+        let p1 = (val >> 18) & 0x1FF
+        let p2 = (val >> 9) & 0x1FF
+        let p3 = val & 0x1FF
+        func unpack(_ p: Int) -> Color {
+            let r = Double((p >> 6) & 7) / 7.0
+            let g = Double((p >> 3) & 7) / 7.0
+            let b = Double(p & 7) / 7.0
+            return Color(red: r, green: g, blue: b)
+        }
+        return (unpack(p1), unpack(p2), unpack(p3))
+    }
 
     static func from(variant: Int) -> AuraConfig {
-        let v = variant % auraTotalVariations
-        let paletteIndex = v % auraPaletteCount
-        let rotationIndex = (v / auraPaletteCount) % auraRotationSteps
-        let blurIndex = (v / (auraPaletteCount * auraRotationSteps)) % auraBlurSteps
-        let colors = auraPalette(at: paletteIndex)
-        let rotationDegrees = Double(rotationIndex)
-        let blurRadius = CGFloat(40 + blurIndex * 3) // 40..<130
-        return AuraConfig(colors: colors, rotationDegrees: rotationDegrees, blurRadius: blurRadius)
+        // Custom color variants (>= 2B) - decode stored RGB
+        if let colors = decodeCustomColors(from: variant) {
+            return AuraConfig(colors: colors, rotationDegrees: 0, blurRadius: 60, isDark: false)
+        }
+        // Negative variants indicate dark auras
+        if variant < 0 {
+            let v = abs(variant) % darkAuraTotalVariations
+            let paletteIndex = v % darkAuraPaletteCount
+            let rotationIndex = (v / darkAuraPaletteCount) % auraRotationSteps
+            let blurIndex = (v / (darkAuraPaletteCount * auraRotationSteps)) % auraBlurSteps
+            let colors = darkAuraPalette(at: paletteIndex)
+            let rotationDegrees = Double(rotationIndex)
+            let blurRadius = CGFloat(40 + blurIndex * 3) // 40..<130
+            return AuraConfig(colors: colors, rotationDegrees: rotationDegrees, blurRadius: blurRadius, isDark: true)
+        } else {
+            let v = variant % auraTotalVariations
+            let paletteIndex = v % auraPaletteCount
+            let rotationIndex = (v / auraPaletteCount) % auraRotationSteps
+            let blurIndex = (v / (auraPaletteCount * auraRotationSteps)) % auraBlurSteps
+            let colors = auraPalette(at: paletteIndex)
+            let rotationDegrees = Double(rotationIndex)
+            let blurRadius = CGFloat(40 + blurIndex * 3) // 40..<130
+            return AuraConfig(colors: colors, rotationDegrees: rotationDegrees, blurRadius: blurRadius, isDark: false)
+        }
+    }
+
+    static func custom(colors: (Color, Color, Color), rotationDegrees: Double = 0, blurRadius: CGFloat = 60) -> AuraConfig {
+        return AuraConfig(colors: colors, rotationDegrees: rotationDegrees, blurRadius: blurRadius, isDark: false)
     }
 
     static func fromLegacy(paletteIndex: Int) -> AuraConfig {
@@ -55,7 +129,8 @@ struct AuraConfig {
         return AuraConfig(
             colors: legacyAuraPalettes[idx],
             rotationDegrees: 0,
-            blurRadius: 60
+            blurRadius: 60,
+            isDark: false
         )
     }
 }
@@ -72,9 +147,13 @@ func auraVariantForDisplayName(_ displayName: String) -> Int {
 struct AuraAvatarView: View {
     var size: CGFloat = 44
     var auraVariant: Int?
+    var customColors: (Color, Color, Color)?
     var legacyPaletteIndex: Int?
 
     private var config: AuraConfig? {
+        if let custom = customColors {
+            return AuraConfig.custom(colors: custom)
+        }
         if let v = auraVariant {
             return .from(variant: v)
         }
@@ -120,10 +199,14 @@ struct AuraAvatarView: View {
 /// Full aura viewport (same as onboarding preview) for reuse in onboarding.
 struct AuraViewportView: View {
     var auraVariant: Int?
+    var customColors: (Color, Color, Color)?
     var legacyPaletteIndex: Int?
     var height: CGFloat = 320
 
     private var config: AuraConfig? {
+        if let custom = customColors {
+            return AuraConfig.custom(colors: custom)
+        }
         if let v = auraVariant {
             return .from(variant: v)
         }

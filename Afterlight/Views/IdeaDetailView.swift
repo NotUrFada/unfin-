@@ -5,6 +5,8 @@
 
 import SwiftUI
 import QuickLook
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct IdeaDetailView: View {
     @EnvironmentObject var store: IdeaStore
@@ -22,6 +24,9 @@ struct IdeaDetailView: View {
     
     @StateObject private var completionVoiceRecorder = VoiceRecorder()
     @State private var completionRecordedVoiceURL: URL?
+    @State private var selectedCompletionPhotoItems: [PhotosPickerItem] = []
+    @State private var completionPendingFiles: [PendingFile] = []
+    @State private var showCompletionFileImporter = false
     
     private var ideaToShow: Idea? {
         store.idea(byId: ideaId)
@@ -193,6 +198,14 @@ struct IdeaDetailView: View {
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
                             .focused($focusField)
                         completionVoiceRow
+                        completionAttachmentsSection
+                    }
+                    .fileImporter(
+                        isPresented: $showCompletionFileImporter,
+                        allowedContentTypes: [.audio, .pdf, .plainText, .content, .data, .image, .movie],
+                        allowsMultipleSelection: true
+                    ) { result in
+                        handleCompletionFileImport(result: result)
                     }
                     
                     Button {
@@ -221,7 +234,105 @@ struct IdeaDetailView: View {
     }
     
     private var completionHasContent: Bool {
-        !completionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || completionRecordedVoiceURL != nil
+        !completionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || completionRecordedVoiceURL != nil
+            || !selectedCompletionPhotoItems.isEmpty
+            || !completionPendingFiles.isEmpty
+    }
+    
+    private var completionAttachmentsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Attachments")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+            HStack(spacing: 12) {
+                PhotosPicker(
+                    selection: $selectedCompletionPhotoItems,
+                    maxSelectionCount: 5,
+                    matching: .images
+                ) {
+                    Label("Photos", systemImage: "photo.on.rectangle.angled")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                Button {
+                    showCompletionFileImporter = true
+                } label: {
+                    Label("Files", systemImage: "doc.badge.plus")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            if !selectedCompletionPhotoItems.isEmpty || !completionPendingFiles.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(selectedCompletionPhotoItems.enumerated()), id: \.offset) { _, _ in
+                        HStack {
+                            Image(systemName: "photo").foregroundStyle(.white.opacity(0.8))
+                            Text("Photo").font(.system(size: 12)).foregroundStyle(.white)
+                            Spacer()
+                            Button {
+                                selectedCompletionPhotoItems.removeAll()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(8)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    ForEach(completionPendingFiles) { file in
+                        HStack {
+                            Image(systemName: file.kind.iconName).foregroundStyle(.white.opacity(0.8))
+                            Text(file.displayName).font(.system(size: 12)).lineLimit(1).foregroundStyle(.white)
+                            Spacer()
+                            Button {
+                                completionPendingFiles.removeAll { $0.id == file.id }
+                                try? FileManager.default.removeItem(at: file.localURL)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(8)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleCompletionFileImport(result: Result<[URL], Error>) {
+        guard case .success(let urls) = result else { return }
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent("UnfinCompletionInbox", isDirectory: true)
+        try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        for url in urls {
+            _ = url.startAccessingSecurityScopedResource()
+            defer { url.stopAccessingSecurityScopedResource() }
+            let name = url.lastPathComponent
+            let dest = inbox.appendingPathComponent("\(UUID().uuidString)_\(name)")
+            if (try? FileManager.default.copyItem(at: url, to: dest)) != nil {
+                let kind = attachmentKind(for: url)
+                completionPendingFiles.append(PendingFile(localURL: dest, displayName: name, kind: kind))
+            }
+        }
+    }
+    
+    private func attachmentKind(for url: URL) -> AttachmentKind {
+        let ext = url.pathExtension.lowercased()
+        if ["mp3", "m4a", "wav", "aac", "ogg"].contains(ext) { return .audio }
+        if ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext) { return .image }
+        if ["pdf", "doc", "docx", "txt", "rtf"].contains(ext) { return .document }
+        return .document
     }
     
     private var completionVoiceRow: some View {
@@ -294,14 +405,36 @@ struct IdeaDetailView: View {
         let trimmed = completionText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard completionHasContent else { return }
         let voiceURL = completionRecordedVoiceURL
-        if let url = voiceURL {
+        let photoItems = selectedCompletionPhotoItems
+        let pendingFiles = completionPendingFiles
+        let hasAsync = voiceURL != nil || !photoItems.isEmpty || !pendingFiles.isEmpty
+        if hasAsync {
             Task {
                 do {
-                    let path = try await store.uploadVoiceForContribution(ideaId: ideaId, fileURL: url)
+                    let contribId = UUID()
+                    var voicePath: String? = nil
+                    if let url = voiceURL {
+                        voicePath = try await store.uploadVoiceForContribution(ideaId: ideaId, fileURL: url)
+                    }
+                    var filesToUpload: [(url: URL, displayName: String, kind: AttachmentKind)] = pendingFiles.map { ($0.localURL, $0.displayName, $0.kind) }
+                    for item in photoItems {
+                        if let img = try? await item.loadTransferable(type: ImageFile.self) {
+                            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("UnfinCompletionPhotos", isDirectory: true)
+                            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+                            let fileURL = tempDir.appendingPathComponent("\(UUID().uuidString).jpg")
+                            if (try? img.data.write(to: fileURL)) != nil {
+                                filesToUpload.append((fileURL, "Photo", .image))
+                            }
+                        }
+                    }
+                    let attachments = try await store.uploadCompletionAttachments(ideaId: ideaId, contributionId: contribId, files: filesToUpload)
                     await MainActor.run {
-                        store.addContribution(ideaId: ideaId, content: trimmed.isEmpty ? "Voice reply" : trimmed, isPublic: completionIsPublic, voicePath: path)
+                        store.addContribution(ideaId: ideaId, content: trimmed.isEmpty && voicePath == nil && attachments.isEmpty ? "Attachment" : (trimmed.isEmpty ? "Attachment" : trimmed), isPublic: completionIsPublic, voicePath: voicePath, attachments: attachments, contributionId: contribId)
                         completionRecordedVoiceURL = nil
                         completionText = ""
+                        selectedCompletionPhotoItems = []
+                        completionPendingFiles.forEach { try? FileManager.default.removeItem(at: $0.localURL) }
+                        completionPendingFiles = []
                         focusField = false
                         showSubmitted = true
                     }
@@ -389,6 +522,17 @@ struct CompletionRowView: View {
             }
             
             if contribution.isPublic {
+                if !contribution.attachments.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Attachments")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                        ForEach(contribution.attachments) { att in
+                            AttachmentRowView(ideaId: ideaId, attachment: att, contributionId: contribution.id)
+                                .environmentObject(store)
+                        }
+                    }
+                }
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 16) {
                         reactionBar
@@ -877,6 +1021,7 @@ struct AttachmentRowView: View {
     @EnvironmentObject var store: IdeaStore
     let ideaId: UUID
     let attachment: Attachment
+    var contributionId: UUID? = nil
     @State private var previewItem: IdentifiableURL?
     @State private var resolvedURL: URL?
     @State private var loadTaskId = UUID()
@@ -927,7 +1072,11 @@ struct AttachmentRowView: View {
         }
         .buttonStyle(.plain)
         .task(id: loadTaskId) {
-            resolvedURL = await store.attachmentURL(ideaId: ideaId, attachment: attachment)
+            if let cid = contributionId {
+                resolvedURL = await store.attachmentURLForCompletion(ideaId: ideaId, contributionId: cid, attachment: attachment)
+            } else {
+                resolvedURL = await store.attachmentURL(ideaId: ideaId, attachment: attachment)
+            }
         }
         .sheet(item: $previewItem) { item in
             QuickLookPreviewView(url: item.url)

@@ -7,27 +7,33 @@ import SwiftUI
 
 struct IdeaCardView: View {
     @EnvironmentObject var store: IdeaStore
+    @Environment(\.colorScheme) private var colorScheme
     let idea: Idea
     var onAction: () -> Void
-    
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+    private var secondaryFg: Color { isLight ? Color(white: 0.4) : Color.white.opacity(0.9) }
+    private var mutedFg: Color { isLight ? Color(white: 0.5) : Color.white.opacity(0.5) }
+
     var body: some View {
         Button(action: onAction) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(Color(white: 0.5))
+                            .fill(mutedFg)
                             .frame(width: 6, height: 6)
                         Text(store.categoryDisplayName(byId: idea.categoryId))
                             .font(.system(size: 10, weight: .semibold))
                             .textCase(.uppercase)
                             .tracking(0.5)
-                            .foregroundStyle(Color(white: 0.5))
+                            .foregroundStyle(mutedFg)
                     }
                     Spacer()
                     Text(idea.timeAgo)
                         .font(.system(size: 11))
-                        .foregroundStyle(Color.white.opacity(0.9))
+                        .foregroundStyle(secondaryFg)
                 }
                 
                 cardContent
@@ -41,16 +47,16 @@ struct IdeaCardView: View {
                                 Text("Voice")
                                     .font(.system(size: 11))
                             }
-                            .foregroundStyle(Color.white.opacity(0.95))
+                            .foregroundStyle(secondaryFg)
                         }
                         if !idea.attachments.isEmpty {
                             HStack(spacing: 6) {
                                 Image(systemName: "paperclip")
                                     .font(.system(size: 11))
-                                    .foregroundStyle(Color.white.opacity(0.95))
+                                    .foregroundStyle(secondaryFg)
                                 Text("\(idea.attachments.count) attachment\(idea.attachments.count == 1 ? "" : "s")")
                                     .font(.system(size: 11))
-                                    .foregroundStyle(Color.white.opacity(0.95))
+                                    .foregroundStyle(secondaryFg)
                             }
                         }
                     }
@@ -65,17 +71,17 @@ struct IdeaCardView: View {
                             .font(.system(size: 10, weight: .semibold))
                     }
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isLight ? .white : primaryFg)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.1))
+                    .background(primaryFg.opacity(isLight ? 0.2 : 0.1))
                     .clipShape(Capsule())
                 }
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.15), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(primaryFg.opacity(0.15), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -84,16 +90,16 @@ struct IdeaCardView: View {
     private var cardContent: some View {
         if idea.categoryId == Category.melodyId {
             VStack(alignment: .leading, spacing: 12) {
-                WaveformView()
+                WaveformView(isLight: isLight)
                 Text(idea.content)
                     .font(.system(size: 14))
-                    .foregroundStyle(Color.white.opacity(0.95))
+                    .foregroundStyle(secondaryFg)
             }
         } else {
             Text(idea.content)
                 .font(.system(size: 16, weight: .regular))
                 .lineSpacing(4)
-                .foregroundStyle(Color.white)
+                .foregroundStyle(primaryFg)
                 .lineLimit(4)
         }
     }
@@ -111,28 +117,30 @@ struct IdeaCardView: View {
                     auraVariant: variant,
                     legacyPaletteIndex: displayName == store.currentUserName ? store.currentAccount?.auraPaletteIndex : nil
                 )
-                .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                .overlay(Circle().stroke(primaryFg.opacity(0.15), lineWidth: 1))
             }
             if total > 3 {
                 Text("+\(total - 3)")
                     .font(.system(size: 10))
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    .foregroundStyle(secondaryFg)
                     .padding(.leading, 4)
             }
         }
     }
-    
 }
 
 struct WaveformView: View {
     @State private var animating = false
+    var isLight: Bool = false
     let heights: [CGFloat] = [0.4, 0.7, 0.3, 1.0, 0.5, 0.8, 0.4, 0.6, 0.2]
-    
+
+    private var barColor: Color { isLight ? Color(white: 0.35) : .white }
+
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Array(heights.enumerated()), id: \.offset) { index, h in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.white)
+                    .fill(barColor)
                     .frame(width: 3, height: 24 * h)
                     .scaleEffect(y: animating ? 1 : 0.5, anchor: .center)
                     .animation(

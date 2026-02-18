@@ -23,7 +23,16 @@ private struct LoadingSessionView: View {
 struct UnfinApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var store = IdeaStore()
-    
+    @AppStorage(appBackgroundStyleKey) private var backgroundStyleRaw: String = AppBackgroundStyle.gradient.rawValue
+
+    private var preferredScheme: ColorScheme? {
+        let style = AppBackgroundStyle(rawValue: backgroundStyleRaw) ?? .gradient
+        switch style {
+        case .white: return .light
+        case .black, .gradient: return .dark
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -39,6 +48,7 @@ struct UnfinApp: App {
                 }
             }
             .environmentObject(store)
+            .preferredColorScheme(preferredScheme)
             .task { await store.restoreSessionIfNeeded() }
             .onChange(of: store.isLoggedIn) { _, loggedIn in
                 if !loggedIn { UIApplication.shared.applicationIconBadgeNumber = 0 }

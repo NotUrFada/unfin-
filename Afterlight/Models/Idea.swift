@@ -176,6 +176,7 @@ struct Contribution: Codable, Identifiable {
     var voicePath: String?
     var authorId: UUID?
     var editedAt: Date?
+    var attachments: [Attachment]
     
     init(
         id: UUID = UUID(),
@@ -188,7 +189,8 @@ struct Contribution: Codable, Identifiable {
         comments: [Comment] = [],
         voicePath: String? = nil,
         authorId: UUID? = nil,
-        editedAt: Date? = nil
+        editedAt: Date? = nil,
+        attachments: [Attachment] = []
     ) {
         self.id = id
         self.authorDisplayName = authorDisplayName
@@ -201,6 +203,7 @@ struct Contribution: Codable, Identifiable {
         self.voicePath = voicePath
         self.authorId = authorId
         self.editedAt = editedAt
+        self.attachments = attachments
     }
     
     func count(for type: String) -> Int {
@@ -211,7 +214,7 @@ struct Contribution: Codable, Identifiable {
     var totalReactionCount: Int { reactions.count }
     
     enum CodingKeys: String, CodingKey {
-        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, reactions, comments, voicePath, authorId, editedAt
+        case id, authorDisplayName, content, createdAt, isPublic, likedByAccountIds, reactions, comments, voicePath, authorId, editedAt, attachments
     }
     
     init(from decoder: Decoder) throws {
@@ -232,6 +235,7 @@ struct Contribution: Codable, Identifiable {
         voicePath = try c.decodeIfPresent(String.self, forKey: .voicePath)
         authorId = try c.decodeIfPresent(UUID.self, forKey: .authorId)
         editedAt = try c.decodeIfPresent(Date.self, forKey: .editedAt)
+        attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
     }
     
     func encode(to encoder: Encoder) throws {
@@ -247,6 +251,7 @@ struct Contribution: Codable, Identifiable {
         try c.encodeIfPresent(voicePath, forKey: .voicePath)
         try c.encodeIfPresent(authorId, forKey: .authorId)
         try c.encodeIfPresent(editedAt, forKey: .editedAt)
+        try c.encode(attachments, forKey: .attachments)
     }
 }
 

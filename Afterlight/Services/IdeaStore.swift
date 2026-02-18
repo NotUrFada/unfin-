@@ -65,6 +65,36 @@ final class IdeaStore: ObservableObject {
         return local
     }
     
+    /// Cache directory for a completion's attachments: Attachments/ideaId/completions/contribId/
+    private func completionAttachmentsDirectory(ideaId: UUID, contributionId: UUID) -> URL {
+        attachmentsBaseURL.appendingPathComponent(ideaId.uuidString, isDirectory: true).appendingPathComponent("completions", isDirectory: true).appendingPathComponent(contributionId.uuidString, isDirectory: true)
+    }
+    
+    /// Returns a local file URL for a completion attachment (downloads and caches if needed).
+    func attachmentURLForCompletion(ideaId: UUID, contributionId: UUID, attachment: Attachment) async -> URL? {
+        let dir = completionAttachmentsDirectory(ideaId: ideaId, contributionId: contributionId)
+        let local = dir.appendingPathComponent(attachment.fileName)
+        if FileManager.default.fileExists(atPath: local.path) { return local }
+        let path = "ideas/\(ideaId.uuidString)/completions/\(contributionId.uuidString)/\(attachment.fileName)"
+        guard let remoteURL = try? await SupabaseService.downloadURL(forStoragePath: path) else { return nil }
+        guard let data = try? await URLSession.shared.data(from: remoteURL).0 else { return nil }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        guard (try? data.write(to: local, options: .atomic)) != nil else { return nil }
+        return local
+    }
+    
+    /// Upload files for a completion; returns the Attachment list to pass to addContribution.
+    func uploadCompletionAttachments(ideaId: UUID, contributionId: UUID, files: [(url: URL, displayName: String, kind: AttachmentKind)]) async throws -> [Attachment] {
+        var result: [Attachment] = []
+        for file in files {
+            let data = try Data(contentsOf: file.url)
+            let fileName = "\(UUID().uuidString)_\(file.displayName)"
+            _ = try await SupabaseService.uploadAttachmentData(ideaId: ideaId, data: data, fileName: fileName, contributionId: contributionId)
+            result.append(Attachment(fileName: fileName, displayName: file.displayName, kind: file.kind))
+        }
+        return result
+    }
+    
     @Published var notifications: [AppNotification] = []
     
     init() {
@@ -305,15 +335,14 @@ final class IdeaStore: ObservableObject {
     }
     
     func updateAccountAura(auraVariant: Int) {
+        // Update local state immediately so background and avatar reflect right away
+        if var p = currentUserProfile {
+            p.auraVariant = auraVariant
+            p.auraPaletteIndex = nil
+            currentUserProfile = p
+        }
         Task {
             try? await SupabaseService.updateUserProfile(auraVariant: auraVariant, auraPaletteIndex: nil)
-            await MainActor.run {
-                if var p = currentUserProfile {
-                    p.auraVariant = auraVariant
-                    p.auraPaletteIndex = nil
-                    currentUserProfile = p
-                }
-            }
         }
     }
     
@@ -383,10 +412,10 @@ final class IdeaStore: ObservableObject {
         }
     }
     
-    func addContribution(ideaId: UUID, content: String, isPublic: Bool = true, voicePath: String? = nil) {
+    func addContribution(ideaId: UUID, content: String, isPublic: Bool = true, voicePath: String? = nil, attachments: [Attachment] = [], contributionId: UUID? = nil) {
         guard let userId = currentUserId, let index = ideas.firstIndex(where: { $0.id == ideaId }) else { return }
         let idea = ideas[index]
-        let contribution = Contribution(authorDisplayName: currentUserName, content: content, isPublic: isPublic, voicePath: voicePath, authorId: userId)
+        let contribution = Contribution(id: contributionId ?? UUID(), authorDisplayName: currentUserName, content: content, isPublic: isPublic, voicePath: voicePath, authorId: userId, attachments: attachments)
         ideas[index].contributions.append(contribution)
         Task {
             try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[index].contributions, attachments: ideas[index].attachments)

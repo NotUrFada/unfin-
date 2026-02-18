@@ -7,8 +7,12 @@ import SwiftUI
 
 struct OnboardingView: View {
     @EnvironmentObject var store: IdeaStore
+    @Environment(\.colorScheme) private var colorScheme
     @State private var displayName = ""
     @State private var auraVariant: Int = 0
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
 
     var body: some View {
         ZStack {
@@ -35,7 +39,7 @@ struct OnboardingView: View {
                         Text("GEN. \(monthYear)")
                             .font(.system(size: 10, weight: .regular, design: .monospaced))
                             .tracking(0.05)
-                            .foregroundStyle(.white.opacity(0.6))
+                            .foregroundStyle(primaryFg.opacity(0.6))
                             .padding(24)
                     }
                     Spacer(minLength: 0)
@@ -62,11 +66,11 @@ struct OnboardingView: View {
                         .font(.system(size: 9, weight: .regular, design: .monospaced))
                         .textCase(.uppercase)
                         .tracking(0.1)
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(primaryFg.opacity(0.6))
                     TextField("How you'll appear", text: $displayName)
                         .font(.system(size: 28, weight: .regular))
                         .tracking(-0.03)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(primaryFg)
                 }
                 Spacer()
             }
@@ -78,11 +82,12 @@ struct OnboardingView: View {
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .textCase(.uppercase)
                 .tracking(0.1)
-                .foregroundStyle(.white)
+                .foregroundStyle(isLight ? Color.white : primaryFg)
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
-                .background(Color.white.opacity(0.15))
+                .background(isLight ? primaryFg : primaryFg.opacity(0.15))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(isLight ? Color.clear : primaryFg.opacity(0.2), lineWidth: 1))
                 
                 Spacer()
             }
@@ -110,7 +115,7 @@ struct OnboardingView: View {
         }
         .padding(28)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.15), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(primaryFg.opacity(0.15), lineWidth: 1))
         .padding(.horizontal, 20)
         .padding(.top, -40)
     }

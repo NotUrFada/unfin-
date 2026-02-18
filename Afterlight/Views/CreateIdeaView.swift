@@ -7,7 +7,7 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
-private struct ImageFile: Transferable {
+struct ImageFile: Transferable {
     let data: Data
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(importedContentType: .image) { data in ImageFile(data: data) }
