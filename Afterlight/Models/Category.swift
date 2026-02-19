@@ -10,12 +10,15 @@ struct Category: Codable, Identifiable, Equatable, Hashable {
     var displayName: String
     var actionVerb: String
     let isSystem: Bool
+    /// User who created this category (app_user_id); nil for system categories. Only the creator can delete.
+    let creatorId: UUID?
     
-    init(id: UUID, displayName: String, actionVerb: String, isSystem: Bool = false) {
+    init(id: UUID, displayName: String, actionVerb: String, isSystem: Bool = false, creatorId: UUID? = nil) {
         self.id = id
         self.displayName = displayName
         self.actionVerb = actionVerb
         self.isSystem = isSystem
+        self.creatorId = creatorId
     }
     
     // Fixed UUIDs for system categories (for migration and consistency)
@@ -37,11 +40,11 @@ struct Category: Codable, Identifiable, Equatable, Hashable {
     
     static var defaultSystemCategories: [Category] {
         [
-            Category(id: melodyId, displayName: "Melody", actionVerb: "Complete", isSystem: true),
-            Category(id: lyricsId, displayName: "Lyrics", actionVerb: "Verse", isSystem: true),
-            Category(id: fictionId, displayName: "Micro-Fiction", actionVerb: "Write", isSystem: true),
-            Category(id: conceptId, displayName: "Concept", actionVerb: "Build", isSystem: true),
-            Category(id: poetryId, displayName: "Poetry", actionVerb: "Verse", isSystem: true)
+            Category(id: melodyId, displayName: "Melody", actionVerb: "Complete", isSystem: true, creatorId: nil),
+            Category(id: lyricsId, displayName: "Lyrics", actionVerb: "Verse", isSystem: true, creatorId: nil),
+            Category(id: fictionId, displayName: "Micro-Fiction", actionVerb: "Write", isSystem: true, creatorId: nil),
+            Category(id: conceptId, displayName: "Concept", actionVerb: "Build", isSystem: true, creatorId: nil),
+            Category(id: poetryId, displayName: "Poetry", actionVerb: "Verse", isSystem: true, creatorId: nil)
         ]
     }
 }

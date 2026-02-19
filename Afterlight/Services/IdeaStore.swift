@@ -8,6 +8,11 @@ import SwiftUI
 import UserNotifications
 
 final class IdeaStore: ObservableObject {
+    /// Runs async work from a synchronous context. Use this instead of inline `Task { await ... }` to avoid "async call in a function that does not support" in some toolchains.
+    private func runAsync(_ work: @escaping () async -> Void) {
+        Task { await work() }
+    }
+    
     @Published var ideas: [Idea] = []
     @Published var categories: [Category] = []
     @Published var currentUserId: UUID? {
@@ -116,7 +121,6 @@ final class IdeaStore: ObservableObject {
     }
     
     /// Call from the root view’s .task { await store.restoreSessionIfNeeded() } to restore session on launch.
-    @MainActor
     func restoreSessionIfNeeded() async {
         #if DEBUG
         // When running from Xcode, skip restore so the app starts at the welcome screen.
@@ -132,7 +136,6 @@ final class IdeaStore: ObservableObject {
         hasRestoredSession = true
     }
     
-    @MainActor
     private func handleSignedIn() async {
         do {
             guard let result = try await SupabaseService.fetchUserProfile() else { return }
@@ -174,18 +177,7 @@ final class IdeaStore: ObservableObject {
                 self?.loadMyIdeaRatingsIfNeeded()
             }
         }
-        Task {
-            do {
-                let ids = try await SupabaseService.getHiddenIdeaIds()
-                await MainActor.run { [weak self] in
-                    self?.hiddenIdeaIds = Set(ids)
-                }
-            } catch {
-                await MainActor.run { [weak self] in
-                    self?.hiddenIdeaIds = []
-                }
-            }
-        }
+        runAsync { await self.loadHiddenIdeaIds() }
         categoriesListener = SupabaseService.listenCategories { [weak self] list in
             DispatchQueue.main.async { self?.categories = list }
         }
@@ -220,9 +212,7 @@ final class IdeaStore: ObservableObject {
     }
     
     func markNotificationRead(id: UUID) {
-        Task {
-            try? await SupabaseService.markNotificationRead(id: id)
-        }
+        runAsync { await self.markNotificationReadInBackground(id: id) }
         if let idx = notifications.firstIndex(where: { $0.id == id }) {
             var n = notifications[idx]
             n.isRead = true
@@ -232,10 +222,16 @@ final class IdeaStore: ObservableObject {
     
     func markAllNotificationsRead() {
         let ids = notificationsForCurrentUser.filter { !$0.isRead }.map(\.id)
-        Task {
-            try? await SupabaseService.markAllNotificationsRead(ids: ids)
-        }
+        runAsync { await self.markAllNotificationsReadInBackground(ids: ids) }
         notifications = notifications.map { var n = $0; n.isRead = true; return n }
+    }
+    
+    private func markNotificationReadInBackground(id: UUID) async {
+        try? await SupabaseService.markNotificationRead(id: id)
+    }
+    
+    private func markAllNotificationsReadInBackground(ids: [UUID]) async {
+        try? await SupabaseService.markAllNotificationsRead(ids: ids)
     }
     
     /// Schedules a local notification so a banner pops up for this notification (in-app or in background).
@@ -302,7 +298,8 @@ final class IdeaStore: ObservableObject {
         let (appUserId, displayName, profileFromLogin) = try await SupabaseService.login(email: emailLower, password: password)
         UserDefaults.standard.removeObject(forKey: Self.justSignedUpForOnboardingKey)
         // Use profile from login response (includes saved aura) so avatar is correct immediately; fallback to fetch if nil
-        let profile = profileFromLogin ?? (try? await SupabaseService.fetchUserProfile())?.profile
+        let fetchedProfile = try? await SupabaseService.fetchUserProfile()
+        let profile = profileFromLogin ?? fetchedProfile?.profile
         await MainActor.run {
             currentUserId = appUserId
             currentUserName = displayName
@@ -312,10 +309,12 @@ final class IdeaStore: ObservableObject {
     }
     
     func logout() {
-        Task {
-            try? await SupabaseService.logout()
-            await MainActor.run { handleSignedOut() }
-        }
+        runAsync { await self.logoutInBackground() }
+    }
+    
+    private func logoutInBackground() async {
+        try? await SupabaseService.logout()
+        await MainActor.run { handleSignedOut() }
     }
     
     var currentAccount: Account? {
@@ -326,23 +325,27 @@ final class IdeaStore: ObservableObject {
     /// Refreshes current user's profile from Supabase (aura, display name, etc.). Call when opening Profile tab so gradient and avatar show saved aura.
     func refreshUserProfileIfNeeded() {
         guard currentUserId != nil else { return }
-        Task {
-            guard let result = try? await SupabaseService.fetchUserProfile() else { return }
-            await MainActor.run {
-                currentUserName = result.displayName
-                currentUserProfile = result.profile
-            }
+        runAsync { await self.refreshUserProfileInBackground() }
+    }
+    
+    private func refreshUserProfileInBackground() async {
+        guard let result = try? await SupabaseService.fetchUserProfile() else { return }
+        await MainActor.run {
+            currentUserName = result.displayName
+            currentUserProfile = result.profile
         }
     }
     
     func updateAccountDisplayName(_ name: String) {
         guard !name.isEmpty else { return }
-        Task {
-            try? await SupabaseService.updateUserProfile(displayName: name)
-            await MainActor.run {
-                currentUserName = name
-                currentUserProfile?.displayName = name
-            }
+        runAsync { await self.updateDisplayNameInBackground(name) }
+    }
+    
+    private func updateDisplayNameInBackground(_ name: String) async {
+        try? await SupabaseService.updateUserProfile(displayName: name)
+        await MainActor.run {
+            currentUserName = name
+            currentUserProfile?.displayName = name
         }
     }
     
@@ -371,9 +374,11 @@ final class IdeaStore: ObservableObject {
                 streakLastDate: nil
             )
         }
-        Task {
-            try? await SupabaseService.updateUserProfile(displayName: displayName, auraVariant: auraVariant, auraPaletteIndex: auraPaletteIndex, glyphGrid: glyphGrid)
-        }
+        runAsync { await self.completeOnboardingInBackground(displayName: displayName, auraVariant: auraVariant, auraPaletteIndex: auraPaletteIndex, glyphGrid: glyphGrid) }
+    }
+    
+    private func completeOnboardingInBackground(displayName: String?, auraVariant: Int?, auraPaletteIndex: Int?, glyphGrid: String?) async {
+        try? await SupabaseService.updateUserProfile(displayName: displayName, auraVariant: auraVariant, auraPaletteIndex: auraPaletteIndex, glyphGrid: glyphGrid)
     }
     
     func updateAccountAura(auraVariant: Int) {
@@ -395,12 +400,12 @@ final class IdeaStore: ObservableObject {
                 streakLastDate: nil
             )
         }
-        Task {
-            try? await SupabaseService.updateUserProfile(auraVariant: auraVariant, auraPaletteIndex: nil)
-            await MainActor.run {
-                refreshUserProfileIfNeeded()
-            }
-        }
+        runAsync { await self.updateAuraInBackground(auraVariant: auraVariant) }
+    }
+    
+    private func updateAuraInBackground(auraVariant: Int) async {
+        try? await SupabaseService.updateUserProfile(auraVariant: auraVariant, auraPaletteIndex: nil)
+        await MainActor.run { refreshUserProfileIfNeeded() }
     }
     
     func category(byId id: UUID) -> Category? {
@@ -417,20 +422,27 @@ final class IdeaStore: ObservableObject {
     
     @discardableResult
     func addCategory(displayName: String, actionVerb: String = "Complete") -> Category {
-        let cat = Category(id: UUID(), displayName: displayName, actionVerb: actionVerb, isSystem: false)
+        let creatorId = currentUserId
+        let cat = Category(id: UUID(), displayName: displayName, actionVerb: actionVerb, isSystem: false, creatorId: creatorId)
         categories.append(cat)
-        Task {
-            try? await SupabaseService.addCategory(cat)
-        }
+        runAsync { await self.addCategoryInBackground(cat, creatorId: creatorId) }
         return cat
     }
     
     func removeCategory(id: UUID) {
         guard let cat = category(byId: id), !cat.isSystem else { return }
+        guard cat.creatorId == currentUserId else { return }
         categories.removeAll { $0.id == id }
-        Task {
-            try? await SupabaseService.removeCategory(id: id)
-        }
+        runAsync { await self.removeCategoryInBackground(id: id) }
+    }
+    
+    private func addCategoryInBackground(_ cat: Category, creatorId: UUID?) async {
+        guard let creatorId = creatorId else { return }
+        try? await SupabaseService.addCategory(cat, creatorId: creatorId)
+    }
+    
+    private func removeCategoryInBackground(id: UUID) async {
+        try? await SupabaseService.removeCategory(id: id)
     }
     
     func deleteAccount() {
@@ -439,26 +451,26 @@ final class IdeaStore: ObservableObject {
             handleSignedOut()
             return
         }
-        Task {
-            do {
-                try await SupabaseService.deleteIdeasByAuthor(authorId: authorId)
-                await MainActor.run {
-                    ideas.removeAll { $0.authorId == authorId }
-                }
-                try await SupabaseService.logout()
-                await MainActor.run {
-                    currentUserId = nil
-                    currentUserName = "Anonymous"
-                    currentUserProfile = nil
-                    handleSignedOut()
-                }
-            } catch {
-                await MainActor.run {
-                    currentUserId = nil
-                    currentUserName = "Anonymous"
-                    currentUserProfile = nil
-                    handleSignedOut()
-                }
+        runAsync { await self.deleteAccountInBackground(authorId: authorId) }
+    }
+    
+    private func deleteAccountInBackground(authorId: UUID) async {
+        do {
+            try await SupabaseService.deleteIdeasByAuthor(authorId: authorId)
+            await MainActor.run { ideas.removeAll { $0.authorId == authorId } }
+            try await SupabaseService.logout()
+            await MainActor.run {
+                currentUserId = nil
+                currentUserName = "Anonymous"
+                currentUserProfile = nil
+                handleSignedOut()
+            }
+        } catch {
+            await MainActor.run {
+                currentUserId = nil
+                currentUserName = "Anonymous"
+                currentUserProfile = nil
+                handleSignedOut()
             }
         }
     }
@@ -495,18 +507,22 @@ final class IdeaStore: ObservableObject {
         let idea = ideas[index]
         let contribution = Contribution(id: contributionId ?? UUID(), authorDisplayName: currentUserName, content: content, isPublic: isPublic, voicePath: voicePath, authorId: userId, attachments: attachments, drawingPath: drawingPath)
         ideas[index].contributions.append(contribution)
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[index].contributions, attachments: ideas[index].attachments)
-            if idea.authorDisplayName != currentUserName {
-                try? await SupabaseService.addNotification(AppNotification(type: .contribution, ideaId: ideaId, contributionId: contribution.id, actorDisplayName: currentUserName, targetDisplayName: idea.authorDisplayName))
-            }
-            let newStreak = try? await SupabaseService.recordActivity()
-            await MainActor.run {
-                if let s = newStreak, var p = currentUserProfile {
-                    p.streakCount = s
-                    p.streakLastDate = Date()
-                    currentUserProfile = p
-                }
+        let contributionsSnapshot = ideas[index].contributions
+        let attachmentsSnapshot = ideas[index].attachments
+        runAsync { await self.syncContributionAdded(ideaId: ideaId, contributions: contributionsSnapshot, attachments: attachmentsSnapshot, contributionId: contribution.id, ideaAuthorDisplayName: idea.authorDisplayName) }
+    }
+    
+    private func syncContributionAdded(ideaId: UUID, contributions: [Contribution], attachments: [Attachment], contributionId: UUID, ideaAuthorDisplayName: String) async {
+        try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: contributions, attachments: attachments)
+        if ideaAuthorDisplayName != currentUserName {
+            try? await SupabaseService.addNotification(AppNotification(type: .contribution, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: ideaAuthorDisplayName))
+        }
+        let newStreak = try? await SupabaseService.recordActivity()
+        await MainActor.run {
+            if let s = newStreak, var p = currentUserProfile {
+                p.streakCount = s
+                p.streakLastDate = Date()
+                currentUserProfile = p
             }
         }
     }
@@ -529,19 +545,27 @@ final class IdeaStore: ObservableObject {
             let authorName = contrib.authorDisplayName
             idea.contributions[contribIndex] = contrib
             ideas[ideaIndex] = idea
-            Task {
-                try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-                if authorName != currentUserName {
-                    try? await SupabaseService.addNotification(AppNotification(type: .reaction, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: authorName))
-                }
-            }
+            let contribs = ideas[ideaIndex].contributions
+            let atts = ideas[ideaIndex].attachments
+            runAsync { await self.syncIdeaUpdate(ideaId: ideaId, contributions: contribs, attachments: atts, notifyReaction: authorName != self.currentUserName, contributionId: contributionId, authorName: authorName) }
             return
         }
         idea.contributions[contribIndex] = contrib
         ideas[ideaIndex] = idea
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
+        let contribs2 = ideas[ideaIndex].contributions
+        let atts2 = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaUpdate(ideaId: ideaId, contributions: contribs2, attachments: atts2, notifyReaction: false, contributionId: nil, authorName: nil) }
+    }
+    
+    private func syncIdeaUpdate(ideaId: UUID, contributions: [Contribution], attachments: [Attachment], notifyReaction: Bool, contributionId: UUID?, authorName: String?) async {
+        try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: contributions, attachments: attachments)
+        if notifyReaction, let cid = contributionId, let name = authorName, name != currentUserName {
+            try? await SupabaseService.addNotification(AppNotification(type: .reaction, ideaId: ideaId, contributionId: cid, actorDisplayName: currentUserName, targetDisplayName: name))
         }
+    }
+    
+    private func syncIdeaOnly(ideaId: UUID, contributions: [Contribution], attachments: [Attachment]) async {
+        try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: contributions, attachments: attachments)
     }
     
     func addComment(ideaId: UUID, contributionId: UUID, content: String, voicePath: String? = nil) {
@@ -557,18 +581,22 @@ final class IdeaStore: ObservableObject {
         contrib.comments.append(Comment(authorDisplayName: currentUserName, content: trimmed, voicePath: voicePath, authorId: userId))
         idea.contributions[contribIndex] = contrib
         ideas[ideaIndex] = idea
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-            if authorName != currentUserName {
-                try? await SupabaseService.addNotification(AppNotification(type: .comment, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: authorName))
-            }
-            let newStreak = try? await SupabaseService.recordActivity()
-            await MainActor.run {
-                if let s = newStreak, var p = currentUserProfile {
-                    p.streakCount = s
-                    p.streakLastDate = Date()
-                    currentUserProfile = p
-                }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncCommentAdded(ideaId: ideaId, contributions: contribs, attachments: atts, contributionId: contributionId, ideaAuthorDisplayName: authorName) }
+    }
+    
+    private func syncCommentAdded(ideaId: UUID, contributions: [Contribution], attachments: [Attachment], contributionId: UUID, ideaAuthorDisplayName: String) async {
+        try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: contributions, attachments: attachments)
+        if ideaAuthorDisplayName != currentUserName {
+            try? await SupabaseService.addNotification(AppNotification(type: .comment, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: ideaAuthorDisplayName))
+        }
+        let newStreak = try? await SupabaseService.recordActivity()
+        await MainActor.run {
+            if let s = newStreak, var p = currentUserProfile {
+                p.streakCount = s
+                p.streakLastDate = Date()
+                currentUserProfile = p
             }
         }
     }
@@ -604,20 +632,17 @@ final class IdeaStore: ObservableObject {
             contrib.comments[commentIndex] = comment
             idea.contributions[contribIndex] = contrib
             ideas[ideaIndex] = idea
-            Task {
-                try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-                if authorName != currentUserName {
-                    try? await SupabaseService.addNotification(AppNotification(type: .reaction, ideaId: ideaId, contributionId: contributionId, actorDisplayName: currentUserName, targetDisplayName: authorName))
-                }
-            }
+            let contribsA = ideas[ideaIndex].contributions
+            let attsA = ideas[ideaIndex].attachments
+            runAsync { await self.syncIdeaUpdate(ideaId: ideaId, contributions: contribsA, attachments: attsA, notifyReaction: authorName != self.currentUserName, contributionId: contributionId, authorName: authorName) }
             return
         }
         contrib.comments[commentIndex] = comment
         idea.contributions[contribIndex] = contrib
         ideas[ideaIndex] = idea
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribsB = ideas[ideaIndex].contributions
+        let attsB = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribsB, attachments: attsB) }
     }
     
     func didCurrentUserLike(contribution: Contribution) -> Bool {
@@ -645,9 +670,9 @@ final class IdeaStore: ObservableObject {
         ideas[ideaIndex].contributions[contribIndex].content = newContent
         ideas[ideaIndex].contributions[contribIndex].voicePath = newVoicePath
         ideas[ideaIndex].contributions[contribIndex].editedAt = Date()
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
     }
     
     func deleteContribution(ideaId: UUID, contributionId: UUID) {
@@ -655,9 +680,9 @@ final class IdeaStore: ObservableObject {
               let contribIndex = ideas[ideaIndex].contributions.firstIndex(where: { $0.id == contributionId }),
               canCurrentUserEditContribution(ideas[ideaIndex].contributions[contribIndex]) else { return }
         ideas[ideaIndex].contributions.remove(at: contribIndex)
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
     }
     
     func updateComment(ideaId: UUID, contributionId: UUID, commentId: UUID, newContent: String, newVoicePath: String?) {
@@ -668,9 +693,9 @@ final class IdeaStore: ObservableObject {
         ideas[ideaIndex].contributions[contribIndex].comments[commentIndex].content = newContent
         ideas[ideaIndex].contributions[contribIndex].comments[commentIndex].voicePath = newVoicePath
         ideas[ideaIndex].contributions[contribIndex].comments[commentIndex].editedAt = Date()
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
     }
     
     func deleteComment(ideaId: UUID, contributionId: UUID, commentId: UUID) {
@@ -679,9 +704,9 @@ final class IdeaStore: ObservableObject {
               let commentIndex = ideas[ideaIndex].contributions[contribIndex].comments.firstIndex(where: { $0.id == commentId }),
               canCurrentUserEditComment(ideas[ideaIndex].contributions[contribIndex].comments[commentIndex]) else { return }
         ideas[ideaIndex].contributions[contribIndex].comments.remove(at: commentIndex)
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
     }
 
     /// Idea author rates a contribution 1–5. Only the idea owner can set/change the rating. You cannot rate your own contribution.
@@ -699,9 +724,9 @@ final class IdeaStore: ObservableObject {
         guard !isOwnContrib else { return }
         ideas[ideaIndex].contributions[contribIndex].authorRating = clamped
         ideas[ideaIndex].contributions[contribIndex].authorRatingAt = Date()
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
     }
     
     /// Idea author removes their rating from a contribution.
@@ -714,9 +739,9 @@ final class IdeaStore: ObservableObject {
         guard isIdeaAuthor else { return }
         ideas[ideaIndex].contributions[contribIndex].authorRating = nil
         ideas[ideaIndex].contributions[contribIndex].authorRatingAt = nil
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
     }
 
     /// Average star rating received by this user (from idea authors rating their contributions). Nil if no ratings.
@@ -740,9 +765,22 @@ final class IdeaStore: ObservableObject {
         return withRating.reduce(0, +) / Double(withRating.count)
     }
     
+    private func loadHiddenIdeaIds() async {
+        do {
+            let ids = try await SupabaseService.getHiddenIdeaIds()
+            await MainActor.run { [weak self] in
+                self?.hiddenIdeaIds = Set(ids)
+            }
+        } catch {
+            await MainActor.run { [weak self] in
+                self?.hiddenIdeaIds = []
+            }
+        }
+    }
+    
     private func loadMyIdeaRatingsIfNeeded() {
         guard currentUserId != nil else { return }
-        Task { await loadMyIdeaRatings() }
+        runAsync { await self.loadMyIdeaRatings() }
     }
     
     private func loadMyIdeaRatings() async {
@@ -755,13 +793,15 @@ final class IdeaStore: ObservableObject {
         guard !isCurrentUserIdeaAuthor(ideaId: ideaId) else { return }
         let clamped = min(5, max(1, rating))
         myIdeaRatings[ideaId] = clamped
-        Task {
-            try? await SupabaseService.setIdeaRating(ideaId: ideaId, rating: clamped)
-            if let updated = try? await SupabaseService.getIdea(ideaId: ideaId) {
-                await MainActor.run {
-                    if let idx = ideas.firstIndex(where: { $0.id == ideaId }) {
-                        ideas[idx] = updated
-                    }
+        runAsync { await self.setIdeaRatingInBackground(ideaId: ideaId, rating: clamped) }
+    }
+    
+    private func setIdeaRatingInBackground(ideaId: UUID, rating: Int) async {
+        try? await SupabaseService.setIdeaRating(ideaId: ideaId, rating: rating)
+        if let updated = try? await SupabaseService.getIdea(ideaId: ideaId) {
+            await MainActor.run {
+                if let idx = ideas.firstIndex(where: { $0.id == ideaId }) {
+                    ideas[idx] = updated
                 }
             }
         }
@@ -771,13 +811,15 @@ final class IdeaStore: ObservableObject {
     func clearIdeaRating(ideaId: UUID) {
         guard !isCurrentUserIdeaAuthor(ideaId: ideaId) else { return }
         myIdeaRatings.removeValue(forKey: ideaId)
-        Task {
-            try? await SupabaseService.deleteIdeaRating(ideaId: ideaId)
-            if let updated = try? await SupabaseService.getIdea(ideaId: ideaId) {
-                await MainActor.run {
-                    if let idx = ideas.firstIndex(where: { $0.id == ideaId }) {
-                        ideas[idx] = updated
-                    }
+        runAsync { await self.clearIdeaRatingInBackground(ideaId: ideaId) }
+    }
+    
+    private func clearIdeaRatingInBackground(ideaId: UUID) async {
+        try? await SupabaseService.deleteIdeaRating(ideaId: ideaId)
+        if let updated = try? await SupabaseService.getIdea(ideaId: ideaId) {
+            await MainActor.run {
+                if let idx = ideas.firstIndex(where: { $0.id == ideaId }) {
+                    ideas[idx] = updated
                 }
             }
         }
@@ -786,23 +828,25 @@ final class IdeaStore: ObservableObject {
     /// Hide an idea from the current user’s feed (“Don’t show this again”). Requires session.
     func hideIdea(ideaId: UUID) {
         hiddenIdeaIds.insert(ideaId)
-        Task {
-            try? await SupabaseService.hideIdea(ideaId: ideaId)
-        }
+        runAsync { await self.hideIdeaInBackground(ideaId: ideaId) }
+    }
+    
+    private func hideIdeaInBackground(ideaId: UUID) async {
+        try? await SupabaseService.hideIdea(ideaId: ideaId)
     }
     
     /// Report an idea (for later moderation). Requires session.
     func reportIdea(ideaId: UUID, reason: String, details: String? = nil) {
-        Task {
-            try? await SupabaseService.reportIdea(ideaId: ideaId, reason: reason, details: details, contributionId: nil)
-        }
+        runAsync { await self.reportIdeaInBackground(ideaId: ideaId, reason: reason, details: details, contributionId: nil) }
     }
     
     /// Report a contribution (for later moderation). Requires session.
     func reportContribution(ideaId: UUID, contributionId: UUID, reason: String, details: String? = nil) {
-        Task {
-            try? await SupabaseService.reportIdea(ideaId: ideaId, reason: reason, details: details, contributionId: contributionId)
-        }
+        runAsync { await self.reportIdeaInBackground(ideaId: ideaId, reason: reason, details: details, contributionId: contributionId) }
+    }
+    
+    private func reportIdeaInBackground(ideaId: UUID, reason: String, details: String?, contributionId: UUID?) async {
+        try? await SupabaseService.reportIdea(ideaId: ideaId, reason: reason, details: details, contributionId: contributionId)
     }
 
     /// Whether the current user is the idea author (and can rate contributions).
@@ -873,9 +917,11 @@ final class IdeaStore: ObservableObject {
         guard isOwner else { return }
         let now = Date()
         ideas[index].finishedAt = now
-        Task {
-            try? await SupabaseService.updateIdeaFinished(ideaId: ideaId, finishedAt: now)
-        }
+        runAsync { await self.updateIdeaFinishedInBackground(ideaId: ideaId, finishedAt: now) }
+    }
+    
+    private func updateIdeaFinishedInBackground(ideaId: UUID, finishedAt: Date) async {
+        try? await SupabaseService.updateIdeaFinished(ideaId: ideaId, finishedAt: finishedAt)
     }
     
     /// Idea author sets how complete the idea is (0–100%). Others see the progress; idea stays open until 100% or marked finished.
@@ -887,9 +933,11 @@ final class IdeaStore: ObservableObject {
         guard isOwner else { return }
         let clamped = min(100, max(0, percentage))
         ideas[index].completionPercentage = clamped
-        Task {
-            try? await SupabaseService.updateIdeaCompletionPercentage(ideaId: ideaId, percentage: clamped)
-        }
+        runAsync { await self.updateIdeaCompletionPercentageInBackground(ideaId: ideaId, percentage: clamped) }
+    }
+    
+    private func updateIdeaCompletionPercentageInBackground(ideaId: UUID, percentage: Int) async {
+        try? await SupabaseService.updateIdeaCompletionPercentage(ideaId: ideaId, percentage: percentage)
     }
     
     /// Idea author removes a contribution they don’t want (e.g. not useful or not 50% complete). Only the idea owner can remove.
@@ -901,8 +949,8 @@ final class IdeaStore: ObservableObject {
         guard isOwner else { return }
         guard ideas[ideaIndex].contributions.contains(where: { $0.id == contributionId }) else { return }
         ideas[ideaIndex].contributions.removeAll { $0.id == contributionId }
-        Task {
-            try? await SupabaseService.updateIdea(ideaId: ideaId, contributions: ideas[ideaIndex].contributions, attachments: ideas[ideaIndex].attachments)
-        }
+        let contribs = ideas[ideaIndex].contributions
+        let atts = ideas[ideaIndex].attachments
+        runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
     }
 }

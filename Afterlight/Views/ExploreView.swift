@@ -13,8 +13,11 @@ struct ExploreView: View {
     @State private var searchText = ""
 
     private var isLight: Bool { colorScheme == .light }
-    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+    /// Darker in light mode so text stays readable on light aura/gradient backgrounds.
+    private var primaryFg: Color { isLight ? Color(white: 0.08) : .white }
+    private var secondaryFg: Color { isLight ? Color(white: 0.28) : Color.white.opacity(0.85) }
 
+    /// Explore shows all ideas (open and finished); only hidden ideas are excluded.
     private var visibleIdeas: [Idea] {
         store.ideas.filter { !store.hiddenIdeaIds.contains($0.id) }
     }
@@ -84,7 +87,7 @@ struct ExploreView: View {
 
             Text("Discover ideas that need your help.")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(primaryFg.opacity(0.95))
+                .foregroundStyle(secondaryFg)
                 .padding(.horizontal, 24)
                 .padding(.top, 4)
                 .padding(.bottom, 8)
@@ -95,7 +98,7 @@ struct ExploreView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 16))
-                .foregroundStyle(primaryFg.opacity(0.6))
+                .foregroundStyle(secondaryFg)
             TextField("Search ideas or categories", text: $searchText)
                 .font(.system(size: 16))
                 .foregroundStyle(primaryFg)
@@ -112,12 +115,12 @@ struct ExploreView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Results")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(primaryFg.opacity(0.9))
+                .foregroundStyle(primaryFg)
                 .padding(.horizontal, 24)
             if searchResults.isEmpty {
                 Text("No ideas match \"\(searchText)\".")
                     .font(.system(size: 15))
-                    .foregroundStyle(primaryFg.opacity(0.8))
+                    .foregroundStyle(secondaryFg)
                     .padding(24)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(primaryFg.opacity(0.06))
@@ -181,7 +184,7 @@ struct ExploreView: View {
                                 .foregroundStyle(primaryFg)
                             Text("\(count(for: category)) ideas")
                                 .font(.system(size: 13))
-                                .foregroundStyle(primaryFg.opacity(0.8))
+                                .foregroundStyle(secondaryFg)
                         }
                         Spacer()
                     }
@@ -229,6 +232,7 @@ struct CategoryFeedView: View {
     private var isLight: Bool { colorScheme == .light }
     private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
 
+    /// Category feed shows all ideas in this category (open and finished).
     private var visibleIdeas: [Idea] {
         store.ideas.filter { !store.hiddenIdeaIds.contains($0.id) }
     }

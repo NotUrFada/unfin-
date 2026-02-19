@@ -50,6 +50,17 @@ struct FirestoreUserProfile {
 
 // MARK: - DB row types (snake_case for Postgres)
 
+/// Decode optional date; tries Date then ISO8601 string so Postgres timestamptz doesn't break the feed.
+private func decodeOptionalDate<Key: CodingKey>(_ container: KeyedDecodingContainer<Key>, key: Key) throws -> Date? {
+    if let d = try container.decodeIfPresent(Date.self, forKey: key) { return d }
+    guard let s = try container.decodeIfPresent(String.self, forKey: key) else { return nil }
+    let fmt = ISO8601DateFormatter()
+    fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let d = fmt.date(from: s) { return d }
+    fmt.formatOptions = [.withInternetDateTime]
+    return fmt.date(from: s)
+}
+
 private struct ProfileRow: Codable {
     let id: UUID
     let appUserId: UUID
@@ -124,6 +135,20 @@ private struct ProfileRow: Codable {
     }
 }
 
+/// Minimal profile decode for login when full ProfileRow decode fails (e.g. date/column issues).
+private struct MinimalProfileRow: Decodable {
+    let id: UUID
+    let appUserId: UUID
+    let displayName: String?
+    let email: String?
+    let auraVariant: Int?
+    let auraPaletteIndex: Int?
+    enum CodingKeys: String, CodingKey {
+        case id, appUserId = "app_user_id", displayName = "display_name", email
+        case auraVariant = "aura_variant", auraPaletteIndex = "aura_palette_index"
+    }
+}
+
 private struct IdeaRow: Codable {
     let id: UUID
     let categoryId: UUID
@@ -185,7 +210,7 @@ private struct IdeaRow: Codable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         contributions = try c.decode([ContributionRow].self, forKey: .contributions)
         attachments = try c.decode([AttachmentRow].self, forKey: .attachments)
-        finishedAt = try c.decodeIfPresent(Date.self, forKey: .finishedAt)
+        finishedAt = try decodeOptionalDate(c, key: .finishedAt)
         isSensitive = try c.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
         drawingPath = try c.decodeIfPresent(String.self, forKey: .drawingPath)
         averageRating = try c.decodeIfPresent(Double.self, forKey: .averageRating)
@@ -357,11 +382,13 @@ private struct CategoryRow: Codable {
     let displayName: String
     let actionVerb: String
     let isSystem: Bool
+    let creatorId: UUID?
     enum CodingKeys: String, CodingKey {
         case id
         case displayName = "display_name"
         case actionVerb = "action_verb"
         case isSystem = "is_system"
+        case creatorId = "creator_id"
     }
 }
 
@@ -440,11 +467,13 @@ extension SupabaseService {
     static func login(email: String, password: String) async throws -> (appUserId: UUID, displayName: String, profile: FirestoreUserProfile?) {
         _ = try await client.auth.signIn(email: email, password: password)
         let session = try await client.auth.session
-        // Select profile columns including aura so we can return full profile and show correct avatar after login
+        let authId = session.user.id
+        // Select profile so we get correct app_user_id (ideas are keyed by it), display name, and aura.
         let selectColumns = "id,app_user_id,display_name,email,aura_variant,aura_palette_index,glyph_grid,created_at,streak_count,streak_last_date"
-        var rows: [ProfileRow] = (try? await client.from("profiles").select(selectColumns).eq("id", value: session.user.id).execute().value) ?? []
-        if let row = rows.first {
-            let profile = FirestoreUserProfile(
+        let minimalColumns = "id,app_user_id,display_name,email,aura_variant,aura_palette_index"
+
+        func profileFromRow(_ row: ProfileRow) -> (UUID, String, FirestoreUserProfile) {
+            let p = FirestoreUserProfile(
                 appUserId: row.appUserId.uuidString,
                 displayName: row.displayName,
                 email: row.email,
@@ -455,10 +484,37 @@ extension SupabaseService {
                 streakCount: row.streakCount,
                 streakLastDate: row.streakLastDate
             )
-            return (row.appUserId, row.displayName, profile)
+            return (row.appUserId, row.displayName, p)
         }
-        // Auth user exists but no profile row. Insert minimal profile (only columns that always exist) so we don't fail on older DBs missing streak_count/streak_last_date.
-        let appUserId = UUID()
+        func profileFromMinimal(_ row: MinimalProfileRow) -> (UUID, String, FirestoreUserProfile) {
+            let name = row.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? row.displayName!
+                : (row.email?.split(separator: "@").first.map(String.init) ?? "User")
+            let p = FirestoreUserProfile(
+                appUserId: row.appUserId.uuidString,
+                displayName: name,
+                email: row.email,
+                auraVariant: row.auraVariant,
+                auraPaletteIndex: row.auraPaletteIndex,
+                glyphGrid: nil,
+                createdAt: nil,
+                streakCount: 0,
+                streakLastDate: nil
+            )
+            return (row.appUserId, name, p)
+        }
+
+        var rows: [ProfileRow] = (try? await client.from("profiles").select(selectColumns).eq("id", value: authId).execute().value) ?? []
+        if let row = rows.first {
+            let (appUserId, displayName, profile) = profileFromRow(row)
+            return (appUserId, displayName, profile)
+        }
+        var minRows: [MinimalProfileRow] = (try? await client.from("profiles").select(minimalColumns).eq("id", value: authId).execute().value) ?? []
+        if let row = minRows.first {
+            let (appUserId, displayName, profile) = profileFromMinimal(row)
+            return (appUserId, displayName, profile)
+        }
+        // No profile row: create one with stable id (auth id) so same user always gets same app_user_id.
         let displayName = session.user.email?.split(separator: "@").first.map(String.init) ?? "User"
         struct MinimalProfileInsert: Encodable {
             let id: UUID
@@ -471,8 +527,8 @@ extension SupabaseService {
             let created_at: Date
         }
         let minimal = MinimalProfileInsert(
-            id: session.user.id,
-            app_user_id: appUserId,
+            id: authId,
+            app_user_id: authId,
             display_name: displayName,
             email: session.user.email,
             aura_variant: nil,
@@ -485,9 +541,43 @@ extension SupabaseService {
         } catch {
             try? await client.from("profiles").insert(minimal).execute()
         }
-        let after: [ProfileRow] = (try? await client.from("profiles").select(selectColumns).eq("id", value: session.user.id).execute().value) ?? []
-        if let row = after.first {
-            let profile = FirestoreUserProfile(
+        rows = (try? await client.from("profiles").select(selectColumns).eq("id", value: authId).execute().value) ?? []
+        if let row = rows.first {
+            let (appUserId, displayName, profile) = profileFromRow(row)
+            return (appUserId, displayName, profile)
+        }
+        minRows = (try? await client.from("profiles").select(minimalColumns).eq("id", value: authId).execute().value) ?? []
+        if let row = minRows.first {
+            let (appUserId, displayName, profile) = profileFromMinimal(row)
+            return (appUserId, displayName, profile)
+        }
+        // Row not visible yet or insert failed. Return minimal profile with stable auth id so login succeeds and identity is stable.
+        let fallbackProfile = FirestoreUserProfile(
+            appUserId: authId.uuidString,
+            displayName: displayName,
+            email: session.user.email,
+            auraVariant: nil,
+            auraPaletteIndex: nil,
+            glyphGrid: nil,
+            createdAt: Date(),
+            streakCount: 0,
+            streakLastDate: nil
+        )
+        return (authId, displayName, fallbackProfile)
+    }
+    
+    static func logout() async throws {
+        try await client.auth.signOut()
+    }
+    
+    static func fetchUserProfile() async throws -> (appUserId: UUID, displayName: String, profile: FirestoreUserProfile)? {
+        guard let session = try? await client.auth.session else { return nil }
+        let sid = session.user.id
+        let selectColumns = "id,app_user_id,display_name,email,aura_variant,aura_palette_index,glyph_grid,created_at,streak_count,streak_last_date"
+        let minimalColumns = "id,app_user_id,display_name,email,aura_variant,aura_palette_index"
+        if let rows: [ProfileRow] = try? await client.from("profiles").select(selectColumns).eq("id", value: sid).execute().value,
+           let row = rows.first {
+            let p = FirestoreUserProfile(
                 appUserId: row.appUserId.uuidString,
                 displayName: row.displayName,
                 email: row.email,
@@ -498,32 +588,27 @@ extension SupabaseService {
                 streakCount: row.streakCount,
                 streakLastDate: row.streakLastDate
             )
-            return (row.appUserId, row.displayName, profile)
+            return (row.appUserId, row.displayName, p)
         }
-        throw NSError(domain: "SupabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not load your profile. Please try again or sign up if you don't have an account."])
-    }
-    
-    static func logout() async throws {
-        try await client.auth.signOut()
-    }
-    
-    static func fetchUserProfile() async throws -> (appUserId: UUID, displayName: String, profile: FirestoreUserProfile)? {
-        guard let session = try? await client.auth.session else { return nil }
-        let sid = session.user.id
-        let rows: [ProfileRow] = try await client.from("profiles").select().eq("id", value: sid).execute().value
-        guard let row = rows.first else { return nil }
-        let p = FirestoreUserProfile(
-            appUserId: row.appUserId.uuidString,
-            displayName: row.displayName,
-            email: row.email,
-            auraVariant: row.auraVariant,
-            auraPaletteIndex: row.auraPaletteIndex,
-            glyphGrid: row.glyphGrid,
-            createdAt: row.createdAt,
-            streakCount: row.streakCount,
-            streakLastDate: row.streakLastDate
-        )
-        return (row.appUserId, row.displayName, p)
+        if let minRows: [MinimalProfileRow] = try? await client.from("profiles").select(minimalColumns).eq("id", value: sid).execute().value,
+           let row = minRows.first {
+            let name = row.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? row.displayName!
+                : (row.email?.split(separator: "@").first.map(String.init) ?? "User")
+            let p = FirestoreUserProfile(
+                appUserId: row.appUserId.uuidString,
+                displayName: name,
+                email: row.email,
+                auraVariant: row.auraVariant,
+                auraPaletteIndex: row.auraPaletteIndex,
+                glyphGrid: nil,
+                createdAt: nil,
+                streakCount: 0,
+                streakLastDate: nil
+            )
+            return (row.appUserId, name, p)
+        }
+        return nil
     }
     
     /// Call after the user posts an idea, adds a contribution, or adds a comment. Fetches profile, computes new streak (consecutive calendar days), updates profile, returns new streak.
@@ -842,7 +927,7 @@ extension SupabaseService {
             Task {
                 let rows: [CategoryRow] = (try? await client.from("categories").select().execute().value) ?? []
                 await MainActor.run {
-                    let custom = rows.map { r in Category(id: r.id, displayName: r.displayName, actionVerb: r.actionVerb, isSystem: r.isSystem) }
+                    let custom = rows.map { r in Category(id: r.id, displayName: r.displayName, actionVerb: r.actionVerb, isSystem: r.isSystem, creatorId: r.creatorId) }
                     completion(Category.defaultSystemCategories + custom.filter { !$0.isSystem })
                 }
             }
@@ -850,9 +935,16 @@ extension SupabaseService {
         return reg
     }
     
-    static func addCategory(_ category: Category) async throws {
-        let row = CategoryRow(id: category.id, displayName: category.displayName, actionVerb: category.actionVerb, isSystem: category.isSystem)
-        try await client.from("categories").insert(row).execute()
+    static func addCategory(_ category: Category, creatorId: UUID) async throws {
+        struct CategoryInsert: Encodable {
+            let id: UUID
+            let display_name: String
+            let action_verb: String
+            let is_system: Bool
+            let creator_id: UUID
+        }
+        let payload = CategoryInsert(id: category.id, display_name: category.displayName, action_verb: category.actionVerb, is_system: category.isSystem, creator_id: creatorId)
+        try await client.from("categories").insert(payload).execute()
     }
     
     static func removeCategory(id: UUID) async throws {

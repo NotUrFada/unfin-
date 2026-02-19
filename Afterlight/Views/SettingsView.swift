@@ -101,11 +101,13 @@ struct SettingsView: View {
                                     .foregroundStyle(.white.opacity(0.5))
                             }
                             Spacer()
-                            Button {
-                                store.removeCategory(id: cat.id)
-                            } label: {
-                                Image(systemName: "trash")
-                                    .foregroundStyle(.red)
+                            if cat.creatorId == store.currentUserId {
+                                Button {
+                                    store.removeCategory(id: cat.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(.red)
+                                }
                             }
                         }
                         .listRowBackground(Color.white.opacity(0.08))

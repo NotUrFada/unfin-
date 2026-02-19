@@ -65,6 +65,7 @@ create table if not exists public.categories (
   action_verb text not null,
   is_system boolean not null default false
 );
+alter table public.categories add column if not exists creator_id uuid;
 
 -- Notifications
 create table if not exists public.notifications (

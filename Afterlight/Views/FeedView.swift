@@ -44,8 +44,11 @@ struct FeedView: View {
     @State private var showNotifications = false
     @State private var pendingIdeaIdToOpen: UUID?
     
+    /// Home feed shows only open ideas (finished ideas are hidden); hidden-by-user ideas are excluded.
     private var filteredIdeas: [Idea] {
-        var list = store.ideas.filter { !store.hiddenIdeaIds.contains($0.id) }
+        var list = store.ideas
+            .filter { !store.hiddenIdeaIds.contains($0.id) }
+            .filter { !$0.isFinished }
         if let id = selectedFilterId ?? filterCategoryId {
             list = list.filter { $0.categoryId == id }
         }

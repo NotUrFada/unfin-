@@ -43,6 +43,8 @@ struct CreateIdeaView: View {
     @State private var newCategoryName = ""
     @State private var newCategoryVerb = "Complete"
     
+    @State private var isSensitive = false
+    
     @StateObject private var voiceRecorder = VoiceRecorder()
     @State private var recordedVoiceURL: URL?
     
@@ -60,7 +62,7 @@ struct CreateIdeaView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         categorySection
                         ideaSection
-                        attachmentsSection
+                        sensitiveSection
                         hintText
                     }
                     .padding(24)
@@ -205,150 +207,136 @@ struct CreateIdeaView: View {
             Text("Your idea")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.92))
-            TextEditor(text: $content)
-                .font(.system(size: 16))
-                .foregroundStyle(Color.white)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 120)
-                .padding(16)
-                .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
-            Text("Or record with your voice")
-                .font(.system(size: 12))
-                .foregroundStyle(Color.white.opacity(0.7))
-            HStack(spacing: 12) {
-                if voiceRecorder.isRecording {
-                    Button {
-                        if let url = voiceRecorder.stop() {
-                            recordedVoiceURL = url
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 16) {
+                TextEditor(text: $content)
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.white)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 100)
+                Divider()
+                    .background(Color.white.opacity(0.15))
+                HStack(spacing: 12) {
+                    if voiceRecorder.isRecording {
+                        Button {
+                            if let url = voiceRecorder.stop() {
+                                recordedVoiceURL = url
+                            }
+                        } label: {
                             Image(systemName: "stop.circle.fill")
                                 .font(.system(size: 24))
-                            Text("Stop")
-                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.red)
                         }
-                        .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.plain)
-                    Text("Recording…")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.white.opacity(0.8))
-                } else if recordedVoiceURL != nil {
-                    Text("Voice recorded")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.white.opacity(0.9))
-                    Button {
-                        recordedVoiceURL = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Color.white.opacity(0.7))
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button {
-                        voiceRecorder.requestPermission { granted in
-                            guard granted else { return }
-                            _ = try? voiceRecorder.start()
+                        .buttonStyle(.plain)
+                    } else if recordedVoiceURL != nil {
+                        Button {
+                            recordedVoiceURL = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundStyle(Color.white.opacity(0.7))
                         }
-                    } label: {
-                        HStack(spacing: 8) {
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            voiceRecorder.requestPermission { granted in
+                                guard granted else { return }
+                                _ = try? voiceRecorder.start()
+                            }
+                        } label: {
                             Image(systemName: "mic.fill")
-                                .font(.system(size: 20))
-                            Text("Record voice")
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.system(size: 22))
+                                .foregroundStyle(Color.white)
                         }
-                        .foregroundStyle(Color.white)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    PhotosPicker(
+                        selection: $selectedPhotoItems,
+                        maxSelectionCount: 10,
+                        matching: .images
+                    ) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 22))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    Button {
+                        showFileImporter = true
+                    } label: {
+                        Image(systemName: "doc.badge.plus")
+                            .font(.system(size: 22))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    Spacer()
                 }
-                Spacer()
+                if !selectedPhotoItems.isEmpty || !pendingFiles.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(selectedPhotoItems.enumerated()), id: \.offset) { _, _ in
+                            HStack {
+                                Image(systemName: "photo")
+                                    .foregroundStyle(Color.white.opacity(0.9))
+                                Text("Photo")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Color.white)
+                                Spacer()
+                            }
+                            .padding(10)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        ForEach(pendingFiles) { file in
+                            HStack {
+                                Image(systemName: file.kind.iconName)
+                                    .foregroundStyle(Color.white.opacity(0.9))
+                                Text(file.displayName)
+                                    .font(.system(size: 13))
+                                    .lineLimit(1)
+                                    .foregroundStyle(Color.white)
+                                Spacer()
+                                Button {
+                                    pendingFiles.removeAll { $0.id == file.id }
+                                    try? FileManager.default.removeItem(at: file.localURL)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(Color.white.opacity(0.75))
+                                }
+                            }
+                            .padding(10)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
+                if voiceRecorder.permissionDenied {
+                    Text("Microphone access was denied. Enable it in Settings to record.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.orange)
+                }
             }
-            .padding(12)
+            .padding(16)
             .background(Color.white.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            if voiceRecorder.permissionDenied {
-                Text("Microphone access was denied. Enable it in Settings to record.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.orange)
-            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15), lineWidth: 1))
         }
     }
     
-    private var attachmentsSection: some View {
+    private var sensitiveSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Attachments")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.92))
-            
-            HStack(spacing: 12) {
-                PhotosPicker(
-                    selection: $selectedPhotoItems,
-                    maxSelectionCount: 10,
-                    matching: .images
-                ) {
-                    Label("Photos", systemImage: "photo.on.rectangle.angled")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                
-                Button {
-                    showFileImporter = true
-                } label: {
-                    Label("Files", systemImage: "doc.badge.plus")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+            Toggle(isOn: $isSensitive) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sensitive content")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.92))
+                    Text("Blur until readers choose to reveal")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.white.opacity(0.65))
                 }
             }
-            
-            if !selectedPhotoItems.isEmpty || !pendingFiles.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(selectedPhotoItems.enumerated()), id: \.offset) { _, _ in
-                        HStack {
-                            Image(systemName: "photo")
-                                .foregroundStyle(Color.white.opacity(0.9))
-                            Text("Photo")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color.white)
-                            Spacer()
-                        }
-                        .padding(10)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    ForEach(pendingFiles) { file in
-                        HStack {
-                            Image(systemName: file.kind.iconName)
-                                .foregroundStyle(Color.white.opacity(0.9))
-                            Text(file.displayName)
-                                .font(.system(size: 13))
-                                .lineLimit(1)
-                                .foregroundStyle(Color.white)
-                            Spacer()
-                            Button {
-                                pendingFiles.removeAll { $0.id == file.id }
-                                try? FileManager.default.removeItem(at: file.localURL)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(Color.white.opacity(0.75))
-                            }
-                        }
-                        .padding(10)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-            }
+            .tint(Color.white.opacity(0.9))
         }
     }
     
@@ -441,7 +429,7 @@ struct CreateIdeaView: View {
                 authorId: authorId,
                 authorDisplayName: store.currentUserName,
                 attachments: attachments,
-                isSensitive: false
+                isSensitive: isSensitive
             )
             do {
                 try await store.addIdea(idea)

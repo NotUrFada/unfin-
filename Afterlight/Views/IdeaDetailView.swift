@@ -23,6 +23,7 @@ struct IdeaDetailView: View {
     @State private var expandedCommentContributionId: UUID?
     @State private var showReportIdeaSheet = false
     @State private var showHideIdeaConfirm = false
+    @State private var sensitiveContentRevealed = false
     @FocusState private var focusField: Bool
     
     @StateObject private var completionVoiceRecorder = VoiceRecorder()
@@ -272,23 +273,54 @@ struct IdeaDetailView: View {
     
     @ViewBuilder
     private func ideaBodyContent(idea: Idea) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(idea.content)
-                .font(.system(size: 18))
-                .lineSpacing(6)
-                .foregroundStyle(.white)
-            if let voicePath = idea.voicePath {
-                VoicePlaybackView(storagePath: voicePath)
-                    .environmentObject(store)
-            }
-            if !idea.attachments.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Attachments")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
-                    ForEach(idea.attachments) { att in
-                        AttachmentRowView(ideaId: idea.id, attachment: att)
+        Group {
+            if idea.isSensitive, !store.isCurrentUserIdeaAuthor(ideaId: idea.id), !sensitiveContentRevealed {
+                ZStack {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(idea.content)
+                            .font(.system(size: 18))
+                            .lineSpacing(6)
+                            .foregroundStyle(.white)
+                    }
+                    .blur(radius: 14)
+                    Button {
+                        sensitiveContentRevealed = true
+                    } label: {
+                        VStack(spacing: 12) {
+                            Image(systemName: "eye.slash.fill")
+                                .font(.system(size: 36))
+                            Text("Sensitive content")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("Tap to reveal")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(idea.content)
+                        .font(.system(size: 18))
+                        .lineSpacing(6)
+                        .foregroundStyle(.white)
+                    if let voicePath = idea.voicePath {
+                        VoicePlaybackView(storagePath: voicePath)
                             .environmentObject(store)
+                    }
+                    if !idea.attachments.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Attachments")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.92))
+                            ForEach(idea.attachments) { att in
+                                AttachmentRowView(ideaId: idea.id, attachment: att)
+                                    .environmentObject(store)
+                            }
+                        }
                     }
                 }
             }
@@ -304,6 +336,19 @@ struct IdeaDetailView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack {
                         categoryTag(categoryId: idea.categoryId)
+                        if idea.isSensitive {
+                            HStack(spacing: 4) {
+                                Image(systemName: "eye.slash.fill")
+                                    .font(.system(size: 10))
+                                Text("Sensitive")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.2))
+                            .clipShape(Capsule())
+                        }
                         if idea.isFinished {
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark.circle.fill")

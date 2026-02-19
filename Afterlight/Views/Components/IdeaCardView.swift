@@ -8,6 +8,7 @@ import SwiftUI
 struct IdeaCardView: View {
     @EnvironmentObject var store: IdeaStore
     @Environment(\.colorScheme) private var colorScheme
+    @State private var contentRevealed = false
     let idea: Idea
     var onOpenUserProfile: ((String, UUID?) -> Void)? = nil
     var onAction: () -> Void
@@ -30,6 +31,15 @@ struct IdeaCardView: View {
                             .textCase(.uppercase)
                             .tracking(0.5)
                             .foregroundStyle(mutedFg)
+                        if idea.isSensitive {
+                            Text("Sensitive")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.2))
+                                .clipShape(Capsule())
+                        }
                         if idea.isFinished {
                             Text("Finished")
                                 .font(.system(size: 9, weight: .semibold))
@@ -62,7 +72,7 @@ struct IdeaCardView: View {
                             .foregroundStyle(secondaryFg)
                 }
                 
-                cardContent
+                sensitiveAwareCardContent
                 
                 if idea.voicePath != nil || !idea.attachments.isEmpty {
                     HStack(spacing: 10) {
@@ -127,6 +137,31 @@ struct IdeaCardView: View {
                 .lineSpacing(4)
                 .foregroundStyle(primaryFg)
                 .lineLimit(4)
+        }
+    }
+    
+    @ViewBuilder
+    private var sensitiveAwareCardContent: some View {
+        if idea.isSensitive, !store.isCurrentUserIdeaAuthor(ideaId: idea.id), !contentRevealed {
+            ZStack {
+                cardContent
+                    .blur(radius: 12)
+                Button {
+                    contentRevealed = true
+                } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "eye.slash.fill")
+                            .font(.system(size: 28))
+                        Text("Tap to reveal")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundStyle(secondaryFg)
+                    .frame(maxWidth: .infinity, minHeight: 80)
+                }
+                .buttonStyle(.plain)
+            }
+        } else {
+            cardContent
         }
     }
     

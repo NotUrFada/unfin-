@@ -85,7 +85,7 @@ struct UserProfileView: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 16) {
                     Button {
                         selectedProfileSegment = .ideas
@@ -113,35 +113,39 @@ struct UserProfileView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    if let avg = store.averageRatingForUser(displayName: displayName, authorId: authorId) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.yellow)
-                            Text(String(format: "%.1f", avg))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(primaryFg)
-                            Text("completions")
-                                .font(.system(size: 11))
-                                .foregroundStyle(secondaryFg)
+                }
+                if store.averageRatingForUser(displayName: displayName, authorId: authorId) != nil || store.averageIdeaRatingForUser(displayName: displayName, authorId: authorId) != nil {
+                    HStack(spacing: 20) {
+                        if let avg = store.averageRatingForUser(displayName: displayName, authorId: authorId) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.yellow)
+                                Text(String(format: "%.1f", avg))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(primaryFg)
+                                Text("completions")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(secondaryFg)
+                            }
                         }
-                    }
-                    if let avg = store.averageIdeaRatingForUser(displayName: displayName, authorId: authorId) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.yellow)
-                            Text(String(format: "%.1f", avg))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(primaryFg)
-                            Text("ideas")
-                                .font(.system(size: 11))
-                                .foregroundStyle(secondaryFg)
+                        if let avg = store.averageIdeaRatingForUser(displayName: displayName, authorId: authorId) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.yellow)
+                                Text(String(format: "%.1f", avg))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(primaryFg)
+                                Text("ideas")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(secondaryFg)
+                            }
                         }
                     }
                 }
-                .padding(.horizontal, 24)
             }
+            .padding(.horizontal, 24)
             .padding(.top, 8)
 
             Text(selectedProfileSegment == .ideas ? "Ideas by \(displayName)" : "Contributions by \(displayName)")
@@ -192,7 +196,8 @@ struct UserProfileView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             let preview = pair.contribution.content.isEmpty ? "Voice or attachment" : String(pair.contribution.content.prefix(120))
-                            if preview.count == 120 { Text(preview + "…") } else { Text(preview) }
+                            let previewText = preview.count == 120 ? preview + "…" : preview
+                            Text(previewText)
                                 .font(.system(size: 15))
                                 .foregroundStyle(primaryFg)
                                 .lineLimit(2)

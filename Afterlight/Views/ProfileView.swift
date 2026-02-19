@@ -203,67 +203,73 @@ struct ProfileView: View {
     }
 
     private func profileStats(ideasCount: Int, contributionsCount: Int, selectedSegment: Binding<ProfileSegment>, averageContributionRating: Double? = nil, averageIdeaRating: Double? = nil) -> some View {
-        HStack(spacing: 16) {
-            Button {
-                selectedSegment.wrappedValue = .ideas
-            } label: {
-                HStack(spacing: 6) {
-                    Text("\(ideasCount)")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(primaryFg)
-                    Text("ideas shared")
-                        .font(.system(size: 13))
-                        .foregroundStyle(secondaryFg)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 16) {
+                Button {
+                    selectedSegment.wrappedValue = .ideas
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("\(ideasCount)")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(primaryFg)
+                        Text("ideas shared")
+                            .font(.system(size: 13))
+                            .foregroundStyle(secondaryFg)
+                    }
+                }
+                .buttonStyle(.plain)
+                Button {
+                    selectedSegment.wrappedValue = .contributions
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("\(contributionsCount)")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(primaryFg)
+                        Text("contributions")
+                            .font(.system(size: 13))
+                            .foregroundStyle(secondaryFg)
+                    }
+                }
+                .buttonStyle(.plain)
+                if store.currentStreak > 0 {
+                    HStack(spacing: 5) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.orange)
+                        Text("\(store.currentStreak) day streak")
+                            .font(.system(size: 13))
+                            .foregroundStyle(secondaryFg)
+                    }
                 }
             }
-            .buttonStyle(.plain)
-            Button {
-                selectedSegment.wrappedValue = .contributions
-            } label: {
-                HStack(spacing: 6) {
-                    Text("\(contributionsCount)")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(primaryFg)
-                    Text("contributions")
-                        .font(.system(size: 13))
-                        .foregroundStyle(secondaryFg)
-                }
-            }
-            .buttonStyle(.plain)
-            if store.currentStreak > 0 {
-                HStack(spacing: 5) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.orange)
-                    Text("\(store.currentStreak) day streak")
-                        .font(.system(size: 13))
-                        .foregroundStyle(secondaryFg)
-                }
-            }
-            if let avg = averageContributionRating {
-                HStack(spacing: 4) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.yellow)
-                    Text(String(format: "%.1f", avg))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(primaryFg)
-                    Text("completions")
-                        .font(.system(size: 11))
-                        .foregroundStyle(secondaryFg)
-                }
-            }
-            if let avg = averageIdeaRating {
-                HStack(spacing: 4) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.yellow)
-                    Text(String(format: "%.1f", avg))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(primaryFg)
-                    Text("ideas")
-                        .font(.system(size: 11))
-                        .foregroundStyle(secondaryFg)
+            if averageContributionRating != nil || averageIdeaRating != nil {
+                HStack(spacing: 20) {
+                    if let avg = averageContributionRating {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.yellow)
+                            Text(String(format: "%.1f", avg))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("completions")
+                                .font(.system(size: 12))
+                                .foregroundStyle(secondaryFg)
+                        }
+                    }
+                    if let avg = averageIdeaRating {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.yellow)
+                            Text(String(format: "%.1f", avg))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("ideas")
+                                .font(.system(size: 12))
+                                .foregroundStyle(secondaryFg)
+                        }
+                    }
                 }
             }
         }
@@ -314,7 +320,8 @@ struct ProfileView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             let preview = pair.contribution.content.isEmpty ? "Voice or attachment" : String(pair.contribution.content.prefix(120))
-                            if preview.count == 120 { Text(preview + "…") } else { Text(preview) }
+                            let previewText = preview.count == 120 ? preview + "…" : preview
+                            Text(previewText)
                                 .font(.system(size: 15))
                                 .foregroundStyle(primaryFg)
                                 .lineLimit(2)

@@ -87,7 +87,7 @@ struct MainTabView: View {
     private func iconForTab(_ tab: Tab) -> String {
         switch tab {
         case .home: return "house.fill"
-        case .explore: return "play.circle.fill"
+        case .explore: return "square.grid.2x2.fill"
         case .profile: return "person.fill"
         }
     }
