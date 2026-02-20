@@ -11,6 +11,8 @@ struct ProfileView: View {
     @Binding var showCreateIdea: Bool
     @State private var displayName: String = ""
     @State private var editingName = false
+    @State private var showNameTakenAlert = false
+    @State private var isSavingName = false
 
     private var isLight: Bool { colorScheme == .light }
     private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
@@ -95,6 +97,22 @@ struct ProfileView: View {
             displayName = store.currentUserName
             store.refreshUserProfileIfNeeded()
         }
+        .alert("Display name taken", isPresented: $showNameTakenAlert) {
+            Button("OK", role: .cancel) { }
+            Button("Generate random name") {
+                Task {
+                    if let newName = await store.generateAndSetRandomDisplayName() {
+                        await MainActor.run {
+                            displayName = newName
+                            editingName = false
+                            showNameTakenAlert = false
+                        }
+                    }
+                }
+            }
+        } message: {
+            Text("That display name is already taken. Choose another or use a random one.")
+        }
     }
     
     private var addButton: some View {
@@ -137,16 +155,28 @@ struct ProfileView: View {
                         .background(primaryFg.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     Button("Save") {
-                        let name = displayName.isEmpty ? "Anonymous" : displayName
+                        let name = displayName.isEmpty ? "Anonymous" : displayName.trimmingCharacters(in: .whitespacesAndNewlines)
                         if store.isLoggedIn {
-                            store.updateAccountDisplayName(name)
+                            isSavingName = true
+                            Task {
+                                let ok = await store.updateAccountDisplayName(name.isEmpty ? "Anonymous" : name)
+                                await MainActor.run {
+                                    isSavingName = false
+                                    if ok {
+                                        editingName = false
+                                    } else {
+                                        showNameTakenAlert = true
+                                    }
+                                }
+                            }
                         } else {
-                            store.currentUserName = name
+                            store.currentUserName = name.isEmpty ? "Anonymous" : name
+                            editingName = false
                         }
-                        editingName = false
                     }
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(primaryFg)
+                    .disabled(isSavingName)
                 }
                 .padding(.horizontal, 24)
             } else {
@@ -159,6 +189,7 @@ struct ProfileView: View {
                                 size: 52,
                                 auraVariant: store.currentAccount?.auraVariant,
                                 legacyPaletteIndex: store.currentAccount?.auraPaletteIndex,
+                                fallbackUserId: store.currentUserId,
                                 fallbackDisplayName: store.currentUserName
                             )
                             Image(systemName: "pencil.circle.fill")

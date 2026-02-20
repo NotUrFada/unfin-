@@ -336,16 +336,52 @@ final class IdeaStore: ObservableObject {
         }
     }
     
-    func updateAccountDisplayName(_ name: String) {
-        guard !name.isEmpty else { return }
-        runAsync { await self.updateDisplayNameInBackground(name) }
+    /// Updates display name if it's not already taken by another user. Returns true if updated, false if name is taken.
+    func updateAccountDisplayName(_ name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard let authId = await SupabaseService.currentAuthUserId() else { return false }
+        if (try? await SupabaseService.isDisplayNameTaken(trimmed, excludingAuthId: authId)) == true {
+            return false
+        }
+        do {
+            try await SupabaseService.updateUserProfile(displayName: trimmed)
+            await MainActor.run {
+                currentUserName = trimmed
+                currentUserProfile?.displayName = trimmed
+            }
+            return true
+        } catch {
+            return false
+        }
     }
     
-    private func updateDisplayNameInBackground(_ name: String) async {
-        try? await SupabaseService.updateUserProfile(displayName: name)
-        await MainActor.run {
-            currentUserName = name
-            currentUserProfile?.displayName = name
+    /// Returns true if this display name is already taken by another user (for onboarding / profile edit).
+    func isDisplayNameTakenForCurrentUser(_ name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        guard let authId = await SupabaseService.currentAuthUserId() else { return false }
+        return (try? await SupabaseService.isDisplayNameTaken(trimmed, excludingAuthId: authId)) ?? false
+    }
+
+    /// Returns a display name that is not taken (for signup). Does not update anything.
+    func generateAvailableDisplayName() async -> String? {
+        try? await SupabaseService.generateUniqueDisplayName(excludingAuthId: nil)
+    }
+
+    /// Generates a display name that is not taken and updates the account with it. Returns the new name or nil on failure.
+    func generateAndSetRandomDisplayName() async -> String? {
+        let authId = await SupabaseService.currentAuthUserId()
+        guard let name = try? await SupabaseService.generateUniqueDisplayName(excludingAuthId: authId) else { return nil }
+        do {
+            try await SupabaseService.updateUserProfile(displayName: name)
+            await MainActor.run {
+                currentUserName = name
+                currentUserProfile?.displayName = name
+            }
+            return name
+        } catch {
+            return nil
         }
     }
     

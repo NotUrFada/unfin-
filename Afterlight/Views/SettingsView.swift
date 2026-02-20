@@ -33,6 +33,7 @@ struct SettingsView: View {
                                 size: 44,
                                 auraVariant: store.currentAccount?.auraVariant,
                                 legacyPaletteIndex: store.currentAccount?.auraPaletteIndex,
+                                fallbackUserId: store.currentUserId,
                                 fallbackDisplayName: store.currentUserName
                             )
                             VStack(alignment: .leading, spacing: 2) {

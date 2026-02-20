@@ -68,12 +68,15 @@ struct UserProfileView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let isCurrentUser = authorId == store.currentUserId
+        return VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 14) {
                 AuraAvatarView(
                     size: 52,
-                    auraVariant: auraVariantForDisplayName(displayName),
-                    legacyPaletteIndex: nil
+                    auraVariant: isCurrentUser ? store.currentAccount?.auraVariant : auraVariantForDisplayName(displayName),
+                    legacyPaletteIndex: isCurrentUser ? store.currentAccount?.auraPaletteIndex : nil,
+                    fallbackUserId: isCurrentUser ? store.currentUserId : nil,
+                    fallbackDisplayName: displayName
                 )
                 VStack(alignment: .leading, spacing: 2) {
                     Text(displayName)

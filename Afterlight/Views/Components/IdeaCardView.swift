@@ -170,19 +170,22 @@ struct IdeaCardView: View {
         let total = idea.participantDestinations.count
         return HStack(spacing: -8) {
             ForEach(Array(destinations.enumerated()), id: \.offset) { index, dest in
-                let variant: Int? = dest.displayName == store.currentUserName
+                let isCurrentUser = dest.authorId == store.currentUserId
+                let effectiveName = isCurrentUser ? store.currentUserName : dest.displayName
+                let variant: Int? = isCurrentUser
                     ? store.currentAccount?.auraVariant
                     : auraVariantForDisplayName(dest.displayName)
                 let avatar = AuraAvatarView(
                     size: 24,
                     auraVariant: variant,
-                    legacyPaletteIndex: dest.displayName == store.currentUserName ? store.currentAccount?.auraPaletteIndex : nil,
-                    fallbackDisplayName: dest.displayName
+                    legacyPaletteIndex: isCurrentUser ? store.currentAccount?.auraPaletteIndex : nil,
+                    fallbackUserId: isCurrentUser ? store.currentUserId : nil,
+                    fallbackDisplayName: effectiveName
                 )
                 .overlay(Circle().stroke(primaryFg.opacity(0.15), lineWidth: 1))
                 if let onOpen = onOpenUserProfile {
                     Button {
-                        onOpen(dest.displayName, dest.authorId)
+                        onOpen(effectiveName, dest.authorId)
                     } label: { avatar }
                     .buttonStyle(.plain)
                 } else {

@@ -12,6 +12,7 @@ struct SignUpView: View {
     @State private var password = ""
     @State private var displayName = ""
     @State private var isBusy = false
+    @State private var showNameTakenAlert = false
     @FocusState private var focusedField: Field?
     
     enum Field { case email, password, displayName }
@@ -91,8 +92,12 @@ struct SignUpView: View {
                                 await MainActor.run { dismiss() }
                             } catch {
                                 await MainActor.run {
-                                    store.authError = error.localizedDescription
                                     isBusy = false
+                                    if error is DisplayNameTakenError {
+                                        showNameTakenAlert = true
+                                    } else {
+                                        store.authError = error.localizedDescription
+                                    }
                                 }
                             }
                         }
@@ -118,6 +123,18 @@ struct SignUpView: View {
         .toolbarBackground(Color(white: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear { store.authError = nil }
+        .alert("Display name taken", isPresented: $showNameTakenAlert) {
+            Button("OK", role: .cancel) { }
+            Button("Generate random name") {
+                Task {
+                    if let name = await store.generateAvailableDisplayName() {
+                        await MainActor.run { displayName = name }
+                    }
+                }
+            }
+        } message: {
+            Text("That display name is already taken. Choose another or use a random one.")
+        }
     }
 }
 

@@ -28,6 +28,11 @@ private enum SupabaseConfig {
     }
 }
 
+/// Thrown when the user tries to use a display name that is already taken.
+struct DisplayNameTakenError: LocalizedError {
+    var errorDescription: String? { "That display name is already taken." }
+}
+
 enum SupabaseService {
     static let client: SupabaseClient = {
         SupabaseClient(supabaseURL: SupabaseConfig.url, supabaseKey: SupabaseConfig.anonKey)
@@ -445,13 +450,18 @@ extension SupabaseService {
     }
     
     static func signUp(email: String, password: String, displayName: String) async throws -> (appUserId: UUID, displayName: String) {
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw DisplayNameTakenError() }
+        if try await isDisplayNameTaken(name, excludingAuthId: nil) {
+            throw DisplayNameTakenError()
+        }
         let response = try await client.auth.signUp(email: email, password: password)
         let user = response.user
         let appUserId = UUID()
         let profile = ProfileRow(
             id: user.id,
             appUserId: appUserId,
-            displayName: displayName,
+            displayName: name,
             email: email,
             auraVariant: nil,
             auraPaletteIndex: nil,
@@ -461,7 +471,7 @@ extension SupabaseService {
             streakLastDate: nil
         )
         try await client.from("profiles").insert(profile).execute()
-        return (appUserId, displayName)
+        return (appUserId, name)
     }
     
     static func login(email: String, password: String) async throws -> (appUserId: UUID, displayName: String, profile: FirestoreUserProfile?) {
@@ -662,6 +672,42 @@ extension SupabaseService {
         }
         let payload = ProfileUpdate(display_name: displayName, aura_variant: auraVariant, aura_palette_index: auraPaletteIndex, glyph_grid: glyphGrid)
         try await client.from("profiles").update(payload).eq("id", value: session.user.id).execute()
+    }
+    
+    /// Current auth user id, or nil if not logged in.
+    static func currentAuthUserId() async -> UUID? {
+        (try? await client.auth.session)?.user.id
+    }
+
+    /// True if another user already has this display name (case-insensitive, trimmed). excludingAuthId = current user's auth id when updating; nil when signing up.
+    static func isDisplayNameTaken(_ name: String, excludingAuthId: UUID?) async throws -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        struct RpcParams: Encodable {
+            let p_name: String
+            let p_exclude_id: UUID?
+        }
+        let params = RpcParams(p_name: trimmed, p_exclude_id: excludingAuthId)
+        let result: Bool = try await client.rpc("check_display_name_taken", params: params).execute().value
+        return result
+    }
+    
+    /// Generates a display name that is not taken (e.g. "User_abc12def"). excludingAuthId = current user when updating; nil for signup.
+    static func generateUniqueDisplayName(excludingAuthId: UUID?) async throws -> String {
+        let adjectives = ["Swift", "Bright", "Calm", "Bold", "Clear", "Cool", "Fair", "Lucky", "Noble", "True"]
+        let nouns = ["Star", "Wave", "Echo", "Flame", "Breeze", "Spark", "Dawn", "Dusk", "Mist", "Glow"]
+        for _ in 0..<50 {
+            let suffix = String(UUID().uuidString.prefix(8)).lowercased().filter { $0.isLetter }
+            let candidate = "User_\(suffix)"
+            let taken = try await isDisplayNameTaken(candidate, excludingAuthId: excludingAuthId)
+            if !taken { return candidate }
+        }
+        var fallback = "User_\(Int.random(in: 100_000...999_999))"
+        if let a = adjectives.randomElement(), let n = nouns.randomElement() {
+            fallback = "\(a)\(n)_\(Int.random(in: 1...999))"
+        }
+        let taken = try await isDisplayNameTaken(fallback, excludingAuthId: excludingAuthId)
+        return taken ? "User_\(UUID().uuidString.prefix(6))" : fallback
     }
 }
 

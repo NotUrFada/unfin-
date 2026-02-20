@@ -10,6 +10,9 @@ struct OnboardingView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var displayName = ""
     @State private var auraVariant: Int = 0
+    @State private var showNameTakenAlert = false
+    @State private var isContinuing = false
+    @State private var isGeneratingName = false
 
     private var isLight: Bool { colorScheme == .light }
     private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
@@ -72,7 +75,28 @@ struct OnboardingView: View {
                         .tracking(-0.03)
                         .foregroundStyle(primaryFg)
                 }
-                Spacer()
+                Button {
+                    isGeneratingName = true
+                    Task {
+                        if let name = await store.generateAndSetRandomDisplayName() {
+                            await MainActor.run { displayName = name }
+                        }
+                        await MainActor.run { isGeneratingName = false }
+                    }
+                } label: {
+                    Text(isGeneratingName ? "…" : "Random")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .textCase(.uppercase)
+                        .tracking(0.1)
+                        .foregroundStyle(isLight ? Color.white : primaryFg)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .background(isLight ? primaryFg : primaryFg.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isLight ? Color.clear : primaryFg.opacity(0.2), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(isGeneratingName)
             }
             
             HStack(spacing: 12) {
@@ -92,8 +116,10 @@ struct OnboardingView: View {
                 Spacer()
             }
             
-            Button(action: completeOnboarding) {
-                Text("Continue")
+            Button {
+                Task { await tryCompleteOnboarding() }
+            } label: {
+                Text(isContinuing ? "Checking…" : "Continue")
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .textCase(.uppercase)
                     .tracking(0.1)
@@ -112,12 +138,25 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
             .fixedSize(horizontal: false, vertical: true)
+            .disabled(isContinuing)
         }
         .padding(28)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(primaryFg.opacity(0.15), lineWidth: 1))
         .padding(.horizontal, 20)
         .padding(.top, -40)
+        .alert("Display name taken", isPresented: $showNameTakenAlert) {
+            Button("OK", role: .cancel) { }
+            Button("Generate random name") {
+                Task {
+                    if let newName = await store.generateAndSetRandomDisplayName() {
+                        await MainActor.run { displayName = newName }
+                    }
+                }
+            }
+        } message: {
+            Text("That display name is already taken. Choose another or use a random one.")
+        }
     }
     
     // MARK: - Helpers
@@ -129,14 +168,30 @@ struct OnboardingView: View {
         auraVariant = Int.random(in: 0..<auraTotalVariations)
     }
 
-    private func completeOnboarding() {
+    private func completeOnboarding(withName name: String?) {
         let defaultGlyphGrid = String(repeating: "0", count: 12 * 12)
         store.completeOnboarding(
             glyphGrid: defaultGlyphGrid,
             auraPaletteIndex: nil,
             auraVariant: auraVariant,
-            displayName: displayName.isEmpty ? nil : displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            displayName: name
         )
+    }
+
+    private func tryCompleteOnboarding() async {
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        await MainActor.run { isContinuing = true }
+        let nameToUse = name.isEmpty ? nil : name
+        var taken = false
+        if let n = nameToUse {
+            taken = await store.isDisplayNameTakenForCurrentUser(n)
+        }
+        await MainActor.run { isContinuing = false }
+        if taken {
+            await MainActor.run { showNameTakenAlert = true }
+        } else {
+            completeOnboarding(withName: nameToUse?.isEmpty == true ? nil : nameToUse)
+        }
     }
 }
 

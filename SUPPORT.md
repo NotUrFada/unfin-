@@ -19,3 +19,13 @@ We’ll do our best to respond promptly.
 ---
 
 **Unfin** – Finish the story before dark.
+
+---
+
+## App Store Support URL
+
+Apple requires the Support URL in App Store Connect to point to a **real webpage** (not a raw GitHub file). Use the hosted support page:
+
+1. **Add your support email** in `docs/index.html` (replace `YOUR-SUPPORT-EMAIL@example.com`).
+2. **Enable GitHub Pages** for this repo: Settings → Pages → Source: Deploy from branch → branch **main**, folder **/docs**.
+3. **In App Store Connect**, set Support URL to: **https://noturfada.github.io/unfin-/**

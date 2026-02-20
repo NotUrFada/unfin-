@@ -143,13 +143,23 @@ func auraVariantForDisplayName(_ displayName: String) -> Int {
     return abs(h) % auraTotalVariations
 }
 
+/// Deterministic aura variant from user id. Use for the current user's avatar fallback so changing display name doesn't change the avatar.
+func auraVariantForUserId(_ id: UUID) -> Int {
+    var hasher = Hasher()
+    hasher.combine(id)
+    let h = hasher.finalize()
+    return abs(h) % auraTotalVariations
+}
+
 /// Renders the user's aura as a circular avatar (profile picture).
 struct AuraAvatarView: View {
     var size: CGFloat = 44
     var auraVariant: Int?
     var customColors: (Color, Color, Color)?
     var legacyPaletteIndex: Int?
-    /// When no aura is saved, use a deterministic aura from this name so the avatar is never a gray placeholder.
+    /// When no aura is saved, use a deterministic aura from this id so the avatar stays stable when display name changes (e.g. current user).
+    var fallbackUserId: UUID? = nil
+    /// When no aura is saved and no fallbackUserId, use a deterministic aura from this name so the avatar is never a gray placeholder.
     var fallbackDisplayName: String? = nil
 
     private var config: AuraConfig? {
@@ -161,6 +171,9 @@ struct AuraAvatarView: View {
         }
         if let p = legacyPaletteIndex {
             return .fromLegacy(paletteIndex: p)
+        }
+        if let id = fallbackUserId {
+            return .from(variant: auraVariantForUserId(id))
         }
         if let name = fallbackDisplayName, !name.isEmpty {
             return .from(variant: auraVariantForDisplayName(name))

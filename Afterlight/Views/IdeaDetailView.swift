@@ -42,19 +42,24 @@ struct IdeaDetailView: View {
         return idea.authorDisplayName == store.currentUserName
     }
 
+    private func effectiveAuthorName(idea: Idea) -> String {
+        (idea.authorId == store.currentUserId) ? store.currentUserName : idea.authorDisplayName
+    }
+
     @ViewBuilder
     private func authorLine(idea: Idea) -> some View {
+        let name = effectiveAuthorName(idea: idea)
         if let onOpen = onOpenUserProfile {
             Button {
-                onOpen(idea.authorDisplayName, idea.authorId)
+                onOpen(name, idea.authorId)
             } label: {
-                Text("By \(idea.authorDisplayName)")
+                Text("By \(name)")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.8))
             }
             .buttonStyle(.plain)
         } else {
-            Text("By \(idea.authorDisplayName)")
+            Text("By \(name)")
                 .font(.system(size: 13))
                 .foregroundStyle(.white.opacity(0.8))
         }
@@ -760,17 +765,18 @@ struct CompletionRowView: View {
                             .foregroundStyle(.white)
                     }
                     HStack(spacing: 6) {
+                        let contribAuthorName = (contribution.authorId == store.currentUserId) ? store.currentUserName : contribution.authorDisplayName
                         if let onOpen = onOpenUserProfile {
                             Button {
-                                onOpen(contribution.authorDisplayName, contribution.authorId)
+                                onOpen(contribAuthorName, contribution.authorId)
                             } label: {
-                                Text("— \(contribution.authorDisplayName)")
+                                Text("— \(contribAuthorName)")
                                     .font(.system(size: 12))
                                     .foregroundStyle(.white.opacity(0.75))
                             }
                             .buttonStyle(.plain)
                         } else {
-                            Text("— \(contribution.authorDisplayName)")
+                            Text("— \(contribAuthorName)")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.75))
                         }
@@ -1211,17 +1217,18 @@ private struct CommentCellView: View {
                             .foregroundStyle(.white.opacity(0.95))
                     }
                     HStack(spacing: 4) {
+                        let commentAuthorName = (comment.authorId == store.currentUserId) ? store.currentUserName : comment.authorDisplayName
                         if let onOpen = onOpenUserProfile {
                             Button {
-                                onOpen(comment.authorDisplayName, comment.authorId)
+                                onOpen(commentAuthorName, comment.authorId)
                             } label: {
-                                Text("— \(comment.authorDisplayName)")
+                                Text("— \(commentAuthorName)")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.white.opacity(0.6))
                             }
                             .buttonStyle(.plain)
                         } else {
-                            Text("— \(comment.authorDisplayName)")
+                            Text("— \(commentAuthorName)")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.white.opacity(0.6))
                         }
