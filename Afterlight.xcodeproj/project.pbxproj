@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A1B2C3D40000000100000004 /* AfterlightApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000100000004 /* AfterlightApp.swift */; };
+		A1B2C3D40000002200000004 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000002200000004 /* AppTheme.swift */; };
 		A1B2C3D40000000200000004 /* Idea.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000200000004 /* Idea.swift */; };
 		A1B2C3D40000000300000004 /* IdeaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000300000004 /* IdeaStore.swift */; };
 		A1B2C3D40000000400000004 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000400000004 /* MainTabView.swift */; };
@@ -23,6 +24,7 @@
 		A1B2C3D40000000F00000004 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000000F00000004 /* SettingsView.swift */; };
 		A1B2C3D40000001000000004 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001000000004 /* Account.swift */; };
 		A1B2C3D40000001100000004 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001100000004 /* AuthView.swift */; };
+		A1B2C3D40000002100000004 /* AuthStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000002100000004 /* AuthStyles.swift */; };
 		A1B2C3D40000001200000004 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001200000004 /* LoginView.swift */; };
 		A1B2C3D40000001300000004 /* SignUpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001300000004 /* SignUpView.swift */; };
 		A1B2C3D40000001400000004 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D50000001400000004 /* OnboardingView.swift */; };
@@ -41,6 +43,7 @@
 
 /* Begin PBXFileReference section */
 		A1B2C3D50000000100000004 /* AfterlightApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AfterlightApp.swift; sourceTree = "<group>"; };
+		A1B2C3D50000002200000004 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000200000004 /* Idea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Idea.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000300000004 /* IdeaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaStore.swift; sourceTree = "<group>"; };
 		A1B2C3D50000000400000004 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
@@ -58,6 +61,7 @@
 		A1B2C3D50000000F00000004 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001000000004 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001100000004 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		A1B2C3D50000002100000004 /* AuthStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStyles.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001200000004 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001300000004 /* SignUpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpView.swift; sourceTree = "<group>"; };
 		A1B2C3D50000001400000004 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -89,6 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D50000000100000004 /* AfterlightApp.swift */,
+				A1B2C3D50000002200000004 /* AppTheme.swift */,
 				A1B2C3D50000001C00000004 /* AppDelegate.swift */,
 				A1B2C3D70000000200000004 /* Models */,
 				A1B2C3D70000000300000004 /* Services */,
@@ -134,6 +139,7 @@
 				A1B2C3D50000000D00000004 /* ExploreView.swift */,
 				A1B2C3D50000000F00000004 /* SettingsView.swift */,
 				A1B2C3D50000001100000004 /* AuthView.swift */,
+				A1B2C3D50000002100000004 /* AuthStyles.swift */,
 				A1B2C3D50000001200000004 /* LoginView.swift */,
 				A1B2C3D50000001300000004 /* SignUpView.swift */,
 				A1B2C3D50000001400000004 /* OnboardingView.swift */,
@@ -239,6 +245,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B2C3D40000000100000004 /* AfterlightApp.swift in Sources */,
+				A1B2C3D40000002200000004 /* AppTheme.swift in Sources */,
 				A1B2C3D40000000200000004 /* Idea.swift in Sources */,
 				A1B2C3D40000000300000004 /* IdeaStore.swift in Sources */,
 				A1B2C3D40000000400000004 /* MainTabView.swift in Sources */,
@@ -253,6 +260,7 @@
 				A1B2C3D40000000F00000004 /* SettingsView.swift in Sources */,
 				A1B2C3D40000001000000004 /* Account.swift in Sources */,
 				A1B2C3D40000001100000004 /* AuthView.swift in Sources */,
+				A1B2C3D40000002100000004 /* AuthStyles.swift in Sources */,
 				A1B2C3D40000001200000004 /* LoginView.swift in Sources */,
 				A1B2C3D40000001300000004 /* SignUpView.swift in Sources */,
 				A1B2C3D40000001400000004 /* OnboardingView.swift in Sources */,
@@ -330,7 +338,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Afterlight/Unfin.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = M79733KQKW;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Afterlight/Info.plist;
@@ -356,7 +364,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Afterlight/Unfin.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = M79733KQKW;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Afterlight/Info.plist;

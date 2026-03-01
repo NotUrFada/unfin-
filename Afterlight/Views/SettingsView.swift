@@ -21,7 +21,7 @@ struct SettingsView: View {
     
     var body: some View {
         ZStack {
-            Color(white: 0.12).ignoresSafeArea()
+            BackgroundGradientView()
             
             List {
                 Section {
@@ -163,7 +163,7 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -192,7 +192,7 @@ struct SettingsView: View {
     private var addCategorySheet: some View {
         NavigationStack {
             ZStack {
-                Color(white: 0.12).ignoresSafeArea()
+                BackgroundGradientView()
                 Form {
                     TextField("Category name", text: $newCategoryName)
                         .foregroundStyle(Color(white: 0.1))
@@ -204,7 +204,7 @@ struct SettingsView: View {
             }
             .navigationTitle("New category")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

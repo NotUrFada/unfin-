@@ -18,7 +18,7 @@ We’ll do our best to respond promptly.
 
 ---
 
-**Unfin** – Finish the story before dark.
+**Unfin**
 
 ---
 

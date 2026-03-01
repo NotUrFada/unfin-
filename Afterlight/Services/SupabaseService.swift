@@ -166,11 +166,12 @@ private struct IdeaRow: Codable {
     let contributions: [ContributionRow]
     let attachments: [AttachmentRow]
     let finishedAt: Date?
+    let closesAt: Date?
     let isSensitive: Bool
     let averageRating: Double?
     let ratingCount: Int
     let completionPercentage: Int
-    
+
     enum CodingKeys: String, CodingKey {
         case id, content, voicePath = "voice_path"
         case categoryId = "category_id"
@@ -179,14 +180,15 @@ private struct IdeaRow: Codable {
         case createdAt = "created_at"
         case contributions, attachments
         case finishedAt = "finished_at"
+        case closesAt = "closes_at"
         case isSensitive = "is_sensitive"
         case drawingPath = "drawing_path"
         case averageRating = "average_rating"
         case ratingCount = "rating_count"
         case completionPercentage = "completion_percentage"
     }
-    
-    init(id: UUID, categoryId: UUID, content: String, voicePath: String? = nil, drawingPath: String? = nil, authorId: UUID, authorDisplayName: String, createdAt: Date, contributions: [ContributionRow], attachments: [AttachmentRow], finishedAt: Date? = nil, isSensitive: Bool = false, averageRating: Double? = nil, ratingCount: Int = 0, completionPercentage: Int = 0) {
+
+    init(id: UUID, categoryId: UUID, content: String, voicePath: String? = nil, drawingPath: String? = nil, authorId: UUID, authorDisplayName: String, createdAt: Date, contributions: [ContributionRow], attachments: [AttachmentRow], finishedAt: Date? = nil, closesAt: Date? = nil, isSensitive: Bool = false, averageRating: Double? = nil, ratingCount: Int = 0, completionPercentage: Int = 0) {
         self.id = id
         self.categoryId = categoryId
         self.content = content
@@ -198,12 +200,13 @@ private struct IdeaRow: Codable {
         self.contributions = contributions
         self.attachments = attachments
         self.finishedAt = finishedAt
+        self.closesAt = closesAt
         self.isSensitive = isSensitive
         self.averageRating = averageRating
         self.ratingCount = ratingCount
         self.completionPercentage = min(100, max(0, completionPercentage))
     }
-    
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -216,6 +219,7 @@ private struct IdeaRow: Codable {
         contributions = try c.decode([ContributionRow].self, forKey: .contributions)
         attachments = try c.decode([AttachmentRow].self, forKey: .attachments)
         finishedAt = try decodeOptionalDate(c, key: .finishedAt)
+        closesAt = try decodeOptionalDate(c, key: .closesAt)
         isSensitive = try c.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
         drawingPath = try c.decodeIfPresent(String.self, forKey: .drawingPath)
         averageRating = try c.decodeIfPresent(Double.self, forKey: .averageRating)
@@ -754,6 +758,7 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
         },
         attachments: row.attachments.compactMap { a in AttachmentKind(rawValue: a.kind).map { kind in Attachment(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: kind) } },
         finishedAt: row.finishedAt,
+        closesAt: row.closesAt,
         isSensitive: row.isSensitive,
         averageRating: row.averageRating,
         ratingCount: row.ratingCount,
@@ -762,6 +767,12 @@ private func ideaFromRow(_ row: IdeaRow) -> Idea {
 }
 
 extension SupabaseService {
+    /// One-off fetch for pull-to-refresh. Returns ideas ordered by created_at descending.
+    static func fetchIdeas() async throws -> [Idea] {
+        let rows: [IdeaRow] = try await client.from("ideas").select().order("created_at", ascending: false).execute().value
+        return rows.map(ideaFromRow)
+    }
+
     static func listenIdeas(completion: @escaping ([Idea]) -> Void) -> SupabaseListenerRegistration {
         let reg = SupabaseListenerRegistration { }
         reg.startPolling {
@@ -788,8 +799,9 @@ extension SupabaseService {
             let attachments: [AttachmentRow]
             let isSensitive: Bool
             let completionPercentage: Int
+            let closesAt: Date?
             enum CodingKeys: String, CodingKey {
-                case id, content, voicePath = "voice_path", drawingPath = "drawing_path", contributions, attachments, isSensitive = "is_sensitive", completionPercentage = "completion_percentage"
+                case id, content, voicePath = "voice_path", drawingPath = "drawing_path", contributions, attachments, isSensitive = "is_sensitive", completionPercentage = "completion_percentage", closesAt = "closes_at"
                 case categoryId = "category_id"
                 case authorId = "author_id"
                 case authorDisplayName = "author_display_name"
@@ -823,7 +835,8 @@ extension SupabaseService {
             },
             attachments: idea.attachments.map { a in AttachmentRow(id: a.id, fileName: a.fileName, displayName: a.displayName, kind: a.kind.rawValue) },
             isSensitive: idea.isSensitive,
-            completionPercentage: idea.completionPercentage
+            completionPercentage: idea.completionPercentage,
+            closesAt: idea.closesAt
         )
         try await client.from("ideas").insert(payload).execute()
     }
@@ -967,6 +980,13 @@ extension SupabaseService {
         try await client.from("ideas").update(Payload(completion_percentage: clamped)).eq("id", value: ideaId).execute()
     }
     
+    /// One-off fetch for pull-to-refresh.
+    static func fetchCategories() async throws -> [Category] {
+        let rows: [CategoryRow] = try await client.from("categories").select().execute().value
+        let custom = rows.map { r in Category(id: r.id, displayName: r.displayName, actionVerb: r.actionVerb, isSystem: r.isSystem, creatorId: r.creatorId) }
+        return Category.defaultSystemCategories + custom.filter { !$0.isSystem }
+    }
+
     static func listenCategories(completion: @escaping ([Category]) -> Void) -> SupabaseListenerRegistration {
         let reg = SupabaseListenerRegistration { }
         reg.startPolling {
@@ -997,6 +1017,23 @@ extension SupabaseService {
         try await client.from("categories").delete().eq("id", value: id).execute()
     }
     
+    /// One-off fetch for pull-to-refresh.
+    static func fetchNotifications(targetDisplayName: String) async throws -> [AppNotification] {
+        let rows: [NotificationRow] = try await client.from("notifications").select().in("target_display_name", values: [targetDisplayName, ""]).order("created_at", ascending: false).execute().value
+        return rows.map { r in
+            AppNotification(
+                id: r.id,
+                type: AppNotificationType(rawValue: r.type) ?? .newIdea,
+                ideaId: r.ideaId,
+                contributionId: r.contributionId,
+                actorDisplayName: r.actorDisplayName,
+                targetDisplayName: r.targetDisplayName,
+                createdAt: r.createdAt,
+                isRead: r.isRead
+            )
+        }
+    }
+
     static func listenNotifications(targetDisplayName: String, completion: @escaping ([AppNotification]) -> Void) -> SupabaseListenerRegistration {
         let reg = SupabaseListenerRegistration { }
         reg.startPolling {

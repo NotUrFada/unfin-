@@ -15,52 +15,46 @@ struct AuthView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var isLight: Bool { colorScheme == .light }
-    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+    private var primaryFg: Color { AppTheme.Colors.primaryText(isLight: isLight) }
+    private var secondaryFg: Color { AppTheme.Colors.secondaryText(isLight: isLight) }
+    private var surfaceOpacity: Double { AppTheme.Colors.surfaceOpacity(isLight: isLight) }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 BackgroundGradientView()
 
-                VStack(spacing: 32) {
+                VStack(spacing: AppTheme.Spacing.xxl) {
                     Spacer()
-                    Text("UNFIN")
-                        .font(.system(size: 28, weight: .semibold))
-                        .tracking(-0.5)
-                        .foregroundStyle(primaryFg)
-                    Text("Finish the story before dark.")
-                        .font(.system(size: 16))
-                        .foregroundStyle(primaryFg.opacity(0.9))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
+                    UnfinWordmark(size: 28, color: primaryFg)
                     Spacer()
 
-                    VStack(spacing: 16) {
+                    VStack(spacing: AppTheme.Spacing.lg) {
                         NavigationLink(value: AuthDest.login) {
                             Text("Log In")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(isLight ? Color.white : Color(white: 0.12))
+                                .font(AppTheme.Typography.headline)
+                                .foregroundStyle(isLight ? .white : Color(white: 0.12))
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, AppTheme.Spacing.lg)
                                 .background(primaryFg)
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(AuthPrimaryButtonStyle())
 
                         NavigationLink(value: AuthDest.signUp) {
                             Text("Sign Up")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(AppTheme.Typography.headline)
                                 .foregroundStyle(primaryFg)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(primaryFg.opacity(0.2))
+                                .padding(.vertical, AppTheme.Spacing.lg)
+                                .background(primaryFg.opacity(surfaceOpacity))
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(primaryFg.opacity(0.4), lineWidth: 1))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(primaryFg.opacity(0.25), lineWidth: 1))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(AuthPrimaryButtonStyle())
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 48)
+                    .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+                    .padding(.bottom, AppTheme.Spacing.xxl + 16)
                 }
             }
             .navigationDestination(for: AuthDest.self) { dest in

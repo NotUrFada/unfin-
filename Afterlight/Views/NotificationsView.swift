@@ -17,7 +17,8 @@ struct NotificationsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(white: 0.12).ignoresSafeArea()
+                BackgroundGradientView()
+                Group {
                 if list.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "bell.slash")
@@ -69,10 +70,11 @@ struct NotificationsView: View {
                     .scrollContentBackground(.hidden)
                     .listStyle(.plain)
                 }
+                }
             }
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

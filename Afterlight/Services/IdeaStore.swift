@@ -322,6 +322,25 @@ final class IdeaStore: ObservableObject {
         return account(byId: id)
     }
     
+    /// Pull-to-refresh: fetches ideas, categories, notifications, profile, hidden ids, and ratings so the feed feels current.
+    func refreshContent() async {
+        let newIdeas = (try? await SupabaseService.fetchIdeas()) ?? ideas
+        let newCategories = (try? await SupabaseService.fetchCategories()) ?? categories
+        await MainActor.run {
+            ideas = newIdeas
+            categories = newCategories
+            loadMyIdeaRatingsIfNeeded()
+        }
+        await loadHiddenIdeaIds()
+        if currentUserId != nil {
+            await refreshUserProfileInBackground()
+            let newNotifications = (try? await SupabaseService.fetchNotifications(targetDisplayName: currentUserName)) ?? notifications
+            await MainActor.run {
+                notifications = newNotifications
+            }
+        }
+    }
+
     /// Refreshes current user's profile from Supabase (aura, display name, etc.). Call when opening Profile tab so gradient and avatar show saved aura.
     func refreshUserProfileIfNeeded() {
         guard currentUserId != nil else { return }
@@ -988,5 +1007,59 @@ final class IdeaStore: ObservableObject {
         let contribs = ideas[ideaIndex].contributions
         let atts = ideas[ideaIndex].attachments
         runAsync { await self.syncIdeaOnly(ideaId: ideaId, contributions: contribs, attachments: atts) }
+    }
+}
+
+// MARK: - Drafts (persist idea/completion drafts locally; used by CreateIdeaView and IdeaDetailView)
+
+struct IdeaDraft: Codable {
+    var content: String
+    var categoryId: UUID
+    var isSensitive: Bool
+}
+
+struct CompletionDraft: Codable {
+    var text: String
+    var isPublic: Bool
+}
+
+enum DraftStore {
+    private static let ideaKey = "unfin_ideaDraft"
+    private static func completionKey(ideaId: UUID) -> String {
+        "unfin_completionDraft_\(ideaId.uuidString)"
+    }
+
+    static func loadIdeaDraft() -> IdeaDraft? {
+        guard let data = UserDefaults.standard.data(forKey: ideaKey) else { return nil }
+        return try? JSONDecoder().decode(IdeaDraft.self, from: data)
+    }
+
+    static func saveIdeaDraft(content: String, categoryId: UUID, isSensitive: Bool) {
+        let draft = IdeaDraft(content: content, categoryId: categoryId, isSensitive: isSensitive)
+        if let data = try? JSONEncoder().encode(draft) {
+            UserDefaults.standard.set(data, forKey: ideaKey)
+        }
+    }
+
+    static func clearIdeaDraft() {
+        UserDefaults.standard.removeObject(forKey: ideaKey)
+    }
+
+    static var hasIdeaDraft: Bool { loadIdeaDraft() != nil }
+
+    static func loadCompletionDraft(ideaId: UUID) -> CompletionDraft? {
+        guard let data = UserDefaults.standard.data(forKey: completionKey(ideaId: ideaId)) else { return nil }
+        return try? JSONDecoder().decode(CompletionDraft.self, from: data)
+    }
+
+    static func saveCompletionDraft(ideaId: UUID, text: String, isPublic: Bool) {
+        let draft = CompletionDraft(text: text, isPublic: isPublic)
+        if let data = try? JSONEncoder().encode(draft) {
+            UserDefaults.standard.set(data, forKey: completionKey(ideaId: ideaId))
+        }
+    }
+
+    static func clearCompletionDraft(ideaId: UUID) {
+        UserDefaults.standard.removeObject(forKey: completionKey(ideaId: ideaId))
     }
 }

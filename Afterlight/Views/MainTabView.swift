@@ -19,7 +19,7 @@ struct MainTabView: View {
     @State private var showCreateIdea = false
 
     private var isLight: Bool { colorScheme == .light }
-    private var tabFg: Color { isLight ? Color(white: 0.12) : .white }
+    private var tabFg: Color { AppTheme.Colors.primaryText(isLight: isLight) }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -30,11 +30,11 @@ struct MainTabView: View {
                 case .explore:
                     ExploreView(showCreateIdea: $showCreateIdea)
                 case .profile:
-                    ProfileView(showCreateIdea: $showCreateIdea)
+                    ProfileView(showCreateIdea: $showCreateIdea, selectedTab: $selectedTab)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            
+
             bottomNavBar
         }
         .sheet(isPresented: $showCreateIdea) {
@@ -76,12 +76,12 @@ struct MainTabView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(8)
+        .padding(AppTheme.Spacing.sm)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().stroke(tabFg.opacity(0.08), lineWidth: 1))
         .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 32)
+        .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+        .padding(.bottom, AppTheme.Spacing.xxl)
     }
     
     private func iconForTab(_ tab: Tab) -> String {

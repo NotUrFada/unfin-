@@ -13,9 +13,8 @@ struct ExploreView: View {
     @State private var searchText = ""
 
     private var isLight: Bool { colorScheme == .light }
-    /// Darker in light mode so text stays readable on light aura/gradient backgrounds.
-    private var primaryFg: Color { isLight ? Color(white: 0.08) : .white }
-    private var secondaryFg: Color { isLight ? Color(white: 0.28) : Color.white.opacity(0.85) }
+    private var primaryFg: Color { AppTheme.Colors.primaryText(isLight: isLight) }
+    private var secondaryFg: Color { AppTheme.Colors.secondaryText(isLight: isLight) }
 
     /// Explore shows all ideas (open and finished); only hidden ideas are excluded.
     private var visibleIdeas: [Idea] {
@@ -35,6 +34,15 @@ struct ExploreView: View {
         visibleIdeas.randomElement()
     }
 
+    /// Ideas that are still open (not marked finished) — good targets to complete.
+    private var openIdeas: [Idea] {
+        visibleIdeas.filter { !$0.isFinished }
+    }
+
+    private var randomOpenIdea: Idea? {
+        openIdeas.randomElement()
+    }
+
     var body: some View {
         NavigationStack(path: $explorePath) {
             ZStack(alignment: .bottomTrailing) {
@@ -45,14 +53,19 @@ struct ExploreView: View {
                         if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             searchResultsSection
                         } else {
+                            quickActionsSection
+                            openForCompletionSection
                             discoverySection
                             categoryGrid
                         }
                     }
                     .padding(.bottom, 100)
                 }
+                .refreshable {
+                    await store.refreshContent()
+                }
                 .background(BackgroundGradientView())
-                
+
                 addButton
             }
             .navigationDestination(for: Category.self) { category in
@@ -77,20 +90,24 @@ struct ExploreView: View {
     }
     
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Explore")
-                .font(.system(size: 32, weight: .medium))
-                .tracking(-0.03)
-                .foregroundStyle(primaryFg)
-                .padding(.horizontal, 24)
-                .padding(.top, 56)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            HStack {
+                Text("Explore")
+                    .font(AppTheme.Typography.titleLarge)
+                    .tracking(-0.5)
+                    .foregroundStyle(primaryFg)
+                Spacer()
+                UnfinWordmark(size: 12, color: secondaryFg)
+            }
+            .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+            .padding(.top, AppTheme.Spacing.headerTop)
 
             Text("Discover ideas that need your help.")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(secondaryFg)
-                .padding(.horizontal, 24)
-                .padding(.top, 4)
-                .padding(.bottom, 8)
+                .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+                .padding(.top, AppTheme.Spacing.xs)
+                .padding(.bottom, AppTheme.Spacing.sm)
         }
     }
 
@@ -141,6 +158,108 @@ struct ExploreView: View {
         }
     }
 
+    private var quickActionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("What do you want to do?")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(secondaryFg)
+                .padding(.horizontal, 24)
+            HStack(spacing: AppTheme.Spacing.md) {
+                if let open = randomOpenIdea {
+                    Button {
+                        explorePath.append(open.id)
+                    } label: {
+                        HStack(spacing: AppTheme.Spacing.sm) {
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundStyle(primaryFg)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Complete one")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(primaryFg)
+                                Text("Add your take")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(secondaryFg)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(secondaryFg)
+                        }
+                        .padding(AppTheme.Spacing.lg)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(primaryFg.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(primaryFg.opacity(0.12), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button {
+                    showCreateIdea = true
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.sm) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(primaryFg)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Share your own")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("Post an idea")
+                                .font(.system(size: 12))
+                                .foregroundStyle(secondaryFg)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(secondaryFg)
+                    }
+                    .padding(AppTheme.Spacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(primaryFg.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(primaryFg.opacity(0.12), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+        }
+        .padding(.bottom, 8)
+    }
+
+    private var openForCompletionSection: some View {
+        Group {
+            if !openIdeas.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Open for completion")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(primaryFg)
+                        Text("\(openIdeas.count) ideas")
+                            .font(.system(size: 13))
+                            .foregroundStyle(secondaryFg)
+                    }
+                    .padding(.horizontal, 24)
+                    Text("Add your voice or completion to any of these.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(secondaryFg)
+                        .padding(.horizontal, 24)
+                    LazyVStack(spacing: 12) {
+                        ForEach(openIdeas.prefix(6)) { idea in
+                            IdeaCardView(idea: idea, onOpenUserProfile: { name, authorId in
+                                explorePath.append(UserProfileDestination(displayName: name, authorId: authorId))
+                            }) {
+                                explorePath.append(idea.id)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+                .padding(.bottom, 16)
+            }
+        }
+    }
+
     private var discoverySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let random = randomIdea {
@@ -157,6 +276,9 @@ struct ExploreView: View {
                                 .foregroundStyle(primaryFg.opacity(0.8))
                         }
                         Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(secondaryFg)
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,7 +294,12 @@ struct ExploreView: View {
     }
     
     private var categoryGrid: some View {
-        VStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Browse by category")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(primaryFg)
+                .padding(.horizontal, 24)
+            VStack(spacing: 12) {
             ForEach(store.categories) { category in
                 Button {
                     explorePath.append(category)
@@ -196,8 +323,9 @@ struct ExploreView: View {
                 }
                 .buttonStyle(.plain)
             }
+            }
+            .padding(.horizontal, 24)
         }
-        .padding(.horizontal, 24)
     }
     
     private func count(for category: Category) -> Int {
@@ -261,6 +389,9 @@ struct CategoryFeedView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
+            }
+            .refreshable {
+                await store.refreshContent()
             }
             .background(BackgroundGradientView())
             .navigationTitle(category.displayName)

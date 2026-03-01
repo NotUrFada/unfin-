@@ -17,6 +17,8 @@ struct IdeaDetailView: View {
     @State private var completionText = ""
     @State private var completionIsPublic = true
     @State private var showSubmitted = false
+    @State private var showDraftSavedMessage = false
+    @State private var hasLoadedCompletionDraft = false
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
     @State private var deleteError: String?
@@ -66,13 +68,16 @@ struct IdeaDetailView: View {
     }
 
     var body: some View {
-        Group {
-            if let idea = ideaToShow {
-                detailContent(idea: idea)
-            } else {
-                Text("Idea not found")
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            BackgroundGradientView()
+            Group {
+                if let idea = ideaToShow {
+                    detailContent(idea: idea)
+                } else {
+                    Text("Idea not found")
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -114,6 +119,15 @@ struct IdeaDetailView: View {
                     }
                     .disabled(isDeleting)
                 }
+            }
+        }
+        .onAppear {
+            if !hasLoadedCompletionDraft, let idea = ideaToShow, !idea.isFinished, !store.isCurrentUserIdeaAuthor(ideaId: ideaId) {
+                if let draft = DraftStore.loadCompletionDraft(ideaId: ideaId) {
+                    completionText = draft.text
+                    completionIsPublic = draft.isPublic
+                }
+                hasLoadedCompletionDraft = true
             }
         }
         .alert("Submitted", isPresented: $showSubmitted) {
@@ -219,13 +233,33 @@ struct IdeaDetailView: View {
                     .foregroundStyle(.white.opacity(0.6))
             } else {
                 if idea.completionPercentage < 100 {
-                    Text("Author is still accepting contributions.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.6))
+                    if let remaining = idea.timeLimitRemaining, remaining > 0 {
+                        Text("Closes in \(IdeaDetailView.formatTimeRemaining(remaining))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("Author is still accepting contributions.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
                 }
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private static func formatTimeRemaining(_ seconds: TimeInterval) -> String {
+        let h = Int(seconds) / 3600
+        let m = (Int(seconds) % 3600) / 60
+        if h >= 24 {
+            let d = h / 24
+            let hRest = h % 24
+            if hRest == 0 { return "\(d) day\(d == 1 ? "" : "s")" }
+            return "\(d)d \(hRest)h"
+        }
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return "\(m) min" }
+        return "Closing soon"
     }
     
     private func ideaRatingRow(idea: Idea) -> some View {
@@ -333,11 +367,7 @@ struct IdeaDetailView: View {
     }
     
     private func detailContent(idea: Idea) -> some View {
-        
-        ZStack {
-            Color(white: 0.12).ignoresSafeArea()
-            
-            ScrollView {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack {
                         categoryTag(categoryId: idea.categoryId)
@@ -356,15 +386,15 @@ struct IdeaDetailView: View {
                         }
                         if idea.isFinished {
                             HStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle.fill")
+                                Image(systemName: idea.isClosedByTimeLimit ? "clock.badge.xmark" : "checkmark.circle.fill")
                                     .font(.system(size: 11))
-                                Text("Finished")
+                                Text(idea.isClosedByTimeLimit ? "Closed" : "Finished")
                                     .font(.system(size: 11, weight: .semibold))
                             }
-                            .foregroundStyle(.green)
+                            .foregroundStyle(idea.isClosedByTimeLimit ? .orange : .green)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.green.opacity(0.2))
+                            .background((idea.isClosedByTimeLimit ? Color.orange : Color.green).opacity(0.2))
                             .clipShape(Capsule())
                         }
                         Spacer()
@@ -475,23 +505,51 @@ struct IdeaDetailView: View {
                         handleCompletionFileImport(result: result)
                     }
                     
-                    Button {
-                        submitCompletion()
-                    } label: {
-                        HStack {
-                            Text(store.categoryActionVerb(byId: idea.categoryId))
-                            Image(systemName: "arrow.right")
+                    HStack(spacing: 12) {
+                        Button {
+                            submitCompletion()
+                        } label: {
+                            HStack {
+                                Text(store.categoryActionVerb(byId: idea.categoryId))
+                                Image(systemName: "arrow.right")
+                            }
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color(white: 0.12))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color(white: 0.12))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .buttonStyle(.plain)
+                        .disabled(!completionHasContent)
+                        .opacity(completionHasContent ? 1 : 0.6)
+
+                        if completionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false || completionRecordedVoiceURL != nil || !selectedCompletionPhotoItems.isEmpty || !completionPendingFiles.isEmpty {
+                            Button {
+                                DraftStore.saveCompletionDraft(ideaId: idea.id, text: completionText, isPublic: completionIsPublic)
+                                showDraftSavedMessage = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    showDraftSavedMessage = false
+                                }
+                            } label: {
+                                Text("Save draft")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.9))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 16)
+                                    .background(Color.white.opacity(0.2))
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!completionHasContent)
-                    .opacity(completionHasContent ? 1 : 0.6)
+                    if showDraftSavedMessage {
+                        Text("Draft saved")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 4)
+                    }
                     
                     Color.clear.frame(height: 40)
                     } else if !idea.isFinished, store.isCurrentUserIdeaAuthor(ideaId: idea.id) {
@@ -502,7 +560,7 @@ struct IdeaDetailView: View {
                             .padding(.vertical, 20)
                         Color.clear.frame(height: 40)
                     } else {
-                        Text("This idea is finished. No new completions.")
+                        Text(idea.isClosedByTimeLimit ? "This idea is closed. No new completions." : "This idea is finished. No new completions.")
                             .font(.system(size: 14))
                             .foregroundStyle(.white.opacity(0.7))
                             .frame(maxWidth: .infinity)
@@ -511,7 +569,6 @@ struct IdeaDetailView: View {
                     }
                 }
                 .padding(24)
-            }
         }
     }
     
@@ -670,6 +727,7 @@ struct IdeaDetailView: View {
                     let attachments = try await store.uploadCompletionAttachments(ideaId: ideaId, contributionId: contribId, files: filesToUpload)
                     let contentForContrib = trimmed.isEmpty && voicePath == nil && attachments.isEmpty ? "Attachment" : (trimmed.isEmpty ? "Attachment" : trimmed)
                     await MainActor.run {
+                        DraftStore.clearCompletionDraft(ideaId: ideaId)
                         store.addContribution(ideaId: ideaId, content: contentForContrib, isPublic: completionIsPublic, voicePath: voicePath, attachments: attachments, contributionId: contribId)
                         completionRecordedVoiceURL = nil
                         completionText = ""
@@ -684,6 +742,7 @@ struct IdeaDetailView: View {
                 }
             }
         } else {
+            DraftStore.clearCompletionDraft(ideaId: ideaId)
             store.addContribution(ideaId: ideaId, content: trimmed, isPublic: completionIsPublic)
             completionText = ""
             focusField = false

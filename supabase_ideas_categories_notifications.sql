@@ -20,6 +20,7 @@ alter table public.ideas add column if not exists average_rating real;
 alter table public.ideas add column if not exists rating_count int not null default 0;
 alter table public.ideas add column if not exists drawing_path text;
 alter table public.ideas add column if not exists completion_percentage int not null default 0;
+alter table public.ideas add column if not exists closes_at timestamptz;
 
 -- Idea ratings (1–5 stars per user per idea; distinguishes “idea maker” quality from “contributor” quality)
 create table if not exists public.idea_ratings (

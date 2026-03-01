@@ -8,83 +8,65 @@ import SwiftUI
 struct SignUpView: View {
     @EnvironmentObject var store: IdeaStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var email = ""
     @State private var password = ""
     @State private var displayName = ""
     @State private var isBusy = false
     @State private var showNameTakenAlert = false
     @FocusState private var focusedField: Field?
-    
+
+    private var isLight: Bool { colorScheme == .light }
+    private var primaryFg: Color { AppTheme.Colors.primaryText(isLight: isLight) }
+    private var secondaryFg: Color { AppTheme.Colors.secondaryText(isLight: isLight) }
+    private var surfaceOpacity: Double { AppTheme.Colors.surfaceOpacity(isLight: isLight) }
+
     enum Field { case email, password, displayName }
-    
+
     var body: some View {
         ZStack {
-            Color(white: 0.12).ignoresSafeArea()
-            
+            BackgroundGradientView()
+
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xl) {
                     Text("Sign Up")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.top, 24)
-                    
+                        .font(AppTheme.Typography.titleLarge)
+                        .foregroundStyle(primaryFg)
+                        .padding(.top, AppTheme.Spacing.headerTop)
+
                     if let error = store.authError {
                         Text(error)
-                            .font(.system(size: 14))
+                            .font(AppTheme.Typography.bodySmall)
                             .foregroundStyle(.red)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(AppTheme.Spacing.lg)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.red.opacity(0.2))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Email")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                        TextField("you@example.com", text: $email)
+
+                    authField(label: "Email", placeholder: "you@example.com", text: $email, isFocused: focusedField == .email) {
+                        TextField("", text: $email)
                             .textContentType(.emailAddress)
                             .autocapitalization(.none)
                             .keyboardType(.emailAddress)
                             .focused($focusedField, equals: .email)
-                            .foregroundStyle(.white)
-                            .padding(16)
-                            .background(Color.white.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
                     }
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Password")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                        SecureField("Password", text: $password)
+
+                    authField(label: "Password", placeholder: "Password", text: $password, isFocused: focusedField == .password) {
+                        SecureField("", text: $password)
                             .textContentType(.newPassword)
                             .focused($focusedField, equals: .password)
-                            .foregroundStyle(.white)
-                            .padding(16)
-                            .background(Color.white.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
                     }
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Display name")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                        TextField("How you'll appear", text: $displayName)
+
+                    authField(label: "Display name", placeholder: "How you'll appear", text: $displayName, isFocused: focusedField == .displayName) {
+                        TextField("", text: $displayName)
                             .textContentType(.username)
                             .focused($focusedField, equals: .displayName)
-                            .foregroundStyle(.white)
-                            .padding(16)
-                            .background(Color.white.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
                     }
-                    
+
                     Button {
                         isBusy = true
+                        focusedField = nil
                         store.authError = nil
                         Task {
                             do {
@@ -103,24 +85,24 @@ struct SignUpView: View {
                         }
                     } label: {
                         Text(isBusy ? "Creating account…" : "Sign Up")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Color(white: 0.12))
+                            .font(AppTheme.Typography.headline)
+                            .foregroundStyle(isLight ? .white : Color(white: 0.12))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.white)
+                            .padding(.vertical, AppTheme.Spacing.lg)
+                            .background(primaryFg)
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AuthPrimaryButtonStyle())
                     .disabled(isBusy)
-                    .padding(.top, 8)
-                    
+                    .padding(.top, AppTheme.Spacing.sm)
+
                     Spacer(minLength: 40)
                 }
-                .padding(24)
+                .padding(AppTheme.Spacing.screenHorizontal)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear { store.authError = nil }
         .alert("Display name taken", isPresented: $showNameTakenAlert) {
@@ -134,6 +116,41 @@ struct SignUpView: View {
             }
         } message: {
             Text("That display name is already taken. Choose another or use a random one.")
+        }
+    }
+
+    @ViewBuilder
+    private func authField<Content: View>(
+        label: String,
+        placeholder: String,
+        text: Binding<String>,
+        isFocused: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            Text(label)
+                .font(AppTheme.Typography.bodySmall)
+                .fontWeight(.semibold)
+                .foregroundStyle(secondaryFg)
+            ZStack(alignment: .leading) {
+                content()
+                    .foregroundStyle(primaryFg)
+                    .tint(primaryFg)
+                    .padding(AppTheme.Spacing.lg)
+                if text.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .foregroundStyle(primaryFg.opacity(0.5))
+                        .padding(.leading, AppTheme.Spacing.lg)
+                        .allowsHitTesting(false)
+                }
+            }
+            .background(primaryFg.opacity(isFocused ? surfaceOpacity + 0.04 : surfaceOpacity))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(primaryFg.opacity(isFocused ? 0.5 : 0.2), lineWidth: isFocused ? 2 : 1)
+            )
+            .animation(.easeOut(duration: 0.22), value: isFocused)
         }
     }
 }

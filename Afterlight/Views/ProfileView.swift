@@ -9,14 +9,15 @@ struct ProfileView: View {
     @EnvironmentObject var store: IdeaStore
     @Environment(\.colorScheme) private var colorScheme
     @Binding var showCreateIdea: Bool
+    @Binding var selectedTab: Tab
     @State private var displayName: String = ""
     @State private var editingName = false
     @State private var showNameTakenAlert = false
     @State private var isSavingName = false
 
     private var isLight: Bool { colorScheme == .light }
-    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
-    private var secondaryFg: Color { isLight ? Color(white: 0.4) : Color.white.opacity(0.9) }
+    private var primaryFg: Color { AppTheme.Colors.primaryText(isLight: isLight) }
+    private var secondaryFg: Color { AppTheme.Colors.secondaryText(isLight: isLight) }
     
     private var myIdeas: [Idea] {
         guard let userId = store.currentUserId else { return [] }
@@ -66,6 +67,9 @@ struct ProfileView: View {
                                 myContributionsSection
                             }
                         }
+                    }
+                    .refreshable {
+                        await store.refreshContent()
                     }
                 }
                 
@@ -132,19 +136,20 @@ struct ProfileView: View {
     }
     
     private var header: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
             HStack {
+                UnfinWordmark(size: 12, color: secondaryFg)
                 Spacer()
                 Button {
                     showSettings = true
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 20))
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(primaryFg)
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 56)
+            .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+            .padding(.top, AppTheme.Spacing.headerTop)
             
             if editingName {
                 HStack {
@@ -178,9 +183,9 @@ struct ProfileView: View {
                     .foregroundStyle(primaryFg)
                     .disabled(isSavingName)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
             } else {
-                HStack(spacing: 14) {
+                HStack(spacing: AppTheme.Spacing.md + 2) {
                     Button {
                         showChangeAura = true
                     } label: {
@@ -214,7 +219,7 @@ struct ProfileView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
             }
 
             profileStats(
@@ -225,12 +230,77 @@ struct ProfileView: View {
                 averageIdeaRating: store.averageIdeaRatingForUser(displayName: store.currentUserName, authorId: store.currentUserId)
             )
             
+            quickActionsSection
+
             Text(selectedProfileSegment == .ideas ? "Ideas you started" : "Your contributions")
-                .font(.system(size: 13, weight: .semibold))
+                .font(AppTheme.Typography.bodySmall)
+                .fontWeight(.semibold)
                 .foregroundStyle(secondaryFg)
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
+                .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+                .padding(.top, AppTheme.Spacing.sm)
         }
+    }
+
+    private var quickActionsSection: some View {
+        HStack(spacing: AppTheme.Spacing.md) {
+            Button {
+                showCreateIdea = true
+            } label: {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(primaryFg)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Share an idea")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(primaryFg)
+                        Text("Post something to complete")
+                            .font(.system(size: 12))
+                            .foregroundStyle(secondaryFg)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(secondaryFg)
+                }
+                .padding(AppTheme.Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(primaryFg.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(primaryFg.opacity(0.12), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                selectedTab = .explore
+            } label: {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(primaryFg)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Find ideas")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(primaryFg)
+                        Text("Complete someone's idea")
+                            .font(.system(size: 12))
+                            .foregroundStyle(secondaryFg)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(secondaryFg)
+                }
+                .padding(AppTheme.Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(primaryFg.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(primaryFg.opacity(0.12), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+        .padding(.top, AppTheme.Spacing.sm)
     }
 
     private func profileStats(ideasCount: Int, contributionsCount: Int, selectedSegment: Binding<ProfileSegment>, averageContributionRating: Double? = nil, averageIdeaRating: Double? = nil) -> some View {
@@ -311,14 +381,34 @@ struct ProfileView: View {
     private var myIdeasSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if myIdeas.isEmpty {
-                Text("You haven’t posted any ideas yet. Tap + to share one.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(secondaryFg)
-                    .padding(24)
+                Button {
+                    showCreateIdea = true
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.md) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(primaryFg)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("No ideas yet")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("Tap to share your first idea and see others complete it.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(secondaryFg)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(secondaryFg)
+                    }
+                    .padding(AppTheme.Spacing.xl)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(primaryFg.opacity(0.06))
+                    .background(primaryFg.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .padding(.horizontal, 24)
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(primaryFg.opacity(0.12), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
             } else {
                 ForEach(myIdeas) { idea in
                     IdeaCardView(idea: idea, onOpenUserProfile: { name, authorId in
@@ -336,14 +426,34 @@ struct ProfileView: View {
     private var myContributionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if myContributionsWithIdeas.isEmpty {
-                Text("You haven’t added any completions yet. Open an idea and add yours.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(secondaryFg)
-                    .padding(24)
+                Button {
+                    selectedTab = .explore
+                } label: {
+                    HStack(spacing: AppTheme.Spacing.md) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(primaryFg)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("No completions yet")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(primaryFg)
+                            Text("Tap to find ideas and add your completion.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(secondaryFg)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(secondaryFg)
+                    }
+                    .padding(AppTheme.Spacing.xl)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(primaryFg.opacity(0.06))
+                    .background(primaryFg.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .padding(.horizontal, 24)
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(primaryFg.opacity(0.12), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
             } else {
                 ForEach(Array(myContributionsWithIdeas.enumerated()), id: \.element.contribution.id) { _, pair in
                     Button {
@@ -378,6 +488,6 @@ struct ProfileView: View {
 
 
 #Preview {
-    ProfileView(showCreateIdea: .constant(false))
+    ProfileView(showCreateIdea: .constant(false), selectedTab: .constant(.profile))
         .environmentObject(IdeaStore())
 }

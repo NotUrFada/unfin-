@@ -34,9 +34,9 @@ struct FeedView: View {
     var filterCategoryId: UUID? = nil
 
     private var isLight: Bool { colorScheme == .light }
-    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
-    private var secondaryFg: Color { isLight ? Color(white: 0.35) : .white.opacity(0.9) }
-    private var surfaceOpacity: Double { isLight ? 0.12 : 0.15 }
+    private var primaryFg: Color { AppTheme.Colors.primaryText(isLight: isLight) }
+    private var secondaryFg: Color { AppTheme.Colors.secondaryText(isLight: isLight) }
+    private var surfaceOpacity: Double { AppTheme.Colors.surfaceOpacity(isLight: isLight) }
 
     @State private var selectedFilterId: UUID? = nil
     @State private var feedSort: FeedSort = .newest
@@ -104,31 +104,31 @@ struct FeedView: View {
                     feedList
                 }
                 .scrollIndicators(.visible, axes: .vertical)
+                .refreshable {
+                    await store.refreshContent()
+                }
                 .frame(maxHeight: .infinity)
             }
-            
+
             fabButton
         }
     }
     
     private var header: some View {
         HStack {
-            HStack(spacing: 8) {
-                Text("UNFIN")
-                    .font(.system(size: 14, weight: .semibold))
-                    .tracking(-0.5)
-                    .foregroundStyle(primaryFg)
+            HStack(spacing: AppTheme.Spacing.sm) {
+                UnfinWordmark(size: 15, color: primaryFg)
                 if store.isLoggedIn && store.currentStreak > 0 {
-                    HStack(spacing: 4) {
+                    HStack(spacing: AppTheme.Spacing.xs) {
                         Image(systemName: "flame.fill")
-                            .font(.system(size: 12))
+                            .font(AppTheme.Typography.caption)
                             .foregroundStyle(.orange)
                         Text("\(store.currentStreak)")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(primaryFg)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                    .padding(.vertical, AppTheme.Spacing.xs)
                     .background(primaryFg.opacity(surfaceOpacity))
                     .clipShape(Capsule())
                 }
@@ -139,11 +139,11 @@ struct FeedView: View {
             } label: {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bell.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(primaryFg)
                     if store.unreadNotificationCount > 0 {
                         Text("\(min(store.unreadNotificationCount, 99))")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(AppTheme.Typography.labelSmall)
                             .foregroundStyle(.white)
                             .frame(minWidth: 18, minHeight: 18)
                             .background(Color.red)
@@ -156,21 +156,21 @@ struct FeedView: View {
             }
             .buttonStyle(.plain)
             Text(store.currentUserName)
-                .font(.system(size: 11, weight: .medium))
+                .font(AppTheme.Typography.label)
                 .foregroundStyle(primaryFg)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                .padding(.horizontal, AppTheme.Spacing.md)
+                .padding(.vertical, AppTheme.Spacing.xs)
                 .background(primaryFg.opacity(0.2))
                 .clipShape(Capsule())
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 56)
-        .padding(.bottom, 16)
+        .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+        .padding(.top, AppTheme.Spacing.headerTop)
+        .padding(.bottom, AppTheme.Spacing.headerBottom)
     }
     
     private var filterTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: AppTheme.Spacing.md) {
                 FilterTab(title: "For You", isSelected: selectedFilterId == nil) {
                     selectedFilterId = nil
                 }
@@ -180,10 +180,10 @@ struct FeedView: View {
                     }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 8)
+            .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+            .padding(.bottom, AppTheme.Spacing.sm)
         }
-        .padding(.bottom, 10)
+        .padding(.bottom, AppTheme.Spacing.sm + 2)
     }
 
     private var sortPicker: some View {
@@ -202,22 +202,22 @@ struct FeedView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: AppTheme.Spacing.xs) {
                 Text("Sort: \(feedSort.rawValue)")
-                    .font(.system(size: 12))
+                    .font(AppTheme.Typography.caption)
                     .foregroundStyle(secondaryFg)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(AppTheme.Typography.labelSmall)
                     .foregroundStyle(secondaryFg)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, AppTheme.Spacing.md)
             .padding(.vertical, 6)
             .background(primaryFg.opacity(0.1))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 8)
+        .padding(.horizontal, AppTheme.Spacing.screenHorizontal)
+        .padding(.bottom, AppTheme.Spacing.sm)
     }
     
     private var feedList: some View {
@@ -231,7 +231,7 @@ struct FeedView: View {
             }
             Color.clear.frame(height: 100)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.bottom, 120)
     }
     
@@ -247,8 +247,8 @@ struct FeedView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
         }
-        .padding(.trailing, 24)
-        .padding(.bottom, 32)
+        .padding(.trailing, AppTheme.Spacing.screenHorizontal)
+        .padding(.bottom, AppTheme.Spacing.xxl)
     }
 }
 
@@ -259,15 +259,15 @@ struct FilterTab: View {
     let action: () -> Void
 
     private var isLight: Bool { colorScheme == .light }
-    private var primaryFg: Color { isLight ? Color(white: 0.12) : .white }
+    private var primaryFg: Color { AppTheme.Colors.primaryText(isLight: isLight) }
 
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13))
-                .foregroundStyle(isSelected ? (isLight ? Color.white : Color(white: 0.12)) : primaryFg)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .font(AppTheme.Typography.bodySmall)
+                .foregroundStyle(isSelected ? (isLight ? Color.white : Color(white: 0.1)) : primaryFg)
+                .padding(.horizontal, AppTheme.Spacing.lg)
+                .padding(.vertical, AppTheme.Spacing.sm)
                 .background(isSelected ? primaryFg : primaryFg.opacity(0.15))
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(primaryFg.opacity(0.1), lineWidth: isSelected ? 0 : 1))
@@ -310,11 +310,7 @@ struct BackgroundGradientView: View {
 
     private var gradientContent: some View {
         let useAura = auraColors != nil ? Float(1.0) : Float(0.0)
-        let (c1, c2, c3) = auraColors ?? (
-            Color(red: 0.06, green: 0.06, blue: 0.08),
-            Color(red: 0.18, green: 0.18, blue: 0.2),
-            Color(red: 0.38, green: 0.38, blue: 0.42)
-        )
+        let (c1, c2, c3) = auraColors ?? AppTheme.Colors.defaultGradientDark
         return TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 100)
             Color.black

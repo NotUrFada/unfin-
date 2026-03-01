@@ -1,6 +1,6 @@
 # Unfin
 
-**Finish the story before dark.** — A collaborative creativity app where you post incomplete ideas (songs, stories, show concepts, poetry) and others can complete them.
+A collaborative creativity app where you post incomplete ideas (songs, stories, show concepts, poetry) and others can complete them.
 
 ## Features
 

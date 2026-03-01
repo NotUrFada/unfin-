@@ -294,6 +294,8 @@ struct Idea: Codable, Identifiable {
     var attachments: [Attachment]
     /// When set, the idea author has marked this idea as finished (no new completions).
     var finishedAt: Date?
+    /// Optional deadline: after this time the idea is closed for new completions (read-only). Set by author when posting.
+    var closesAt: Date?
     /// When true, content is shown blurred until the reader rubs to reveal (sensitive/triggering).
     var isSensitive: Bool
     /// Average 1–5 star rating from readers (idea maker quality). Nil if no ratings.
@@ -315,6 +317,7 @@ struct Idea: Codable, Identifiable {
         contributions: [Contribution] = [],
         attachments: [Attachment] = [],
         finishedAt: Date? = nil,
+        closesAt: Date? = nil,
         isSensitive: Bool = false,
         averageRating: Double? = nil,
         ratingCount: Int = 0,
@@ -331,16 +334,25 @@ struct Idea: Codable, Identifiable {
         self.contributions = contributions
         self.attachments = attachments
         self.finishedAt = finishedAt
+        self.closesAt = closesAt
         self.isSensitive = isSensitive
         self.averageRating = averageRating
         self.ratingCount = ratingCount
         self.completionPercentage = min(100, max(0, completionPercentage))
     }
     
-    var isFinished: Bool { finishedAt != nil }
-    
+    /// True if no new completions allowed (manually finished or time limit passed).
+    var isFinished: Bool { finishedAt != nil || isClosedByTimeLimit }
+    /// True when closesAt is set and the deadline has passed.
+    var isClosedByTimeLimit: Bool { guard let t = closesAt else { return false }; return Date() >= t }
+    /// Seconds remaining until closesAt; nil if no limit or already closed.
+    var timeLimitRemaining: TimeInterval? {
+        guard let t = closesAt, Date() < t else { return nil }
+        return t.timeIntervalSince(Date())
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, categoryId, category, content, voicePath, drawingPath, authorId, authorDisplayName, createdAt, contributions, attachments, finishedAt, isSensitive, averageRating, ratingCount, completionPercentage
+        case id, categoryId, category, content, voicePath, drawingPath, authorId, authorDisplayName, createdAt, contributions, attachments, finishedAt, closesAt, isSensitive, averageRating, ratingCount, completionPercentage
     }
     
     init(from decoder: Decoder) throws {
@@ -362,6 +374,7 @@ struct Idea: Codable, Identifiable {
         contributions = try c.decode([Contribution].self, forKey: .contributions)
         attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
         finishedAt = try c.decodeIfPresent(Date.self, forKey: .finishedAt)
+        closesAt = try c.decodeIfPresent(Date.self, forKey: .closesAt)
         isSensitive = try c.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
         averageRating = try c.decodeIfPresent(Double.self, forKey: .averageRating)
         ratingCount = try c.decodeIfPresent(Int.self, forKey: .ratingCount) ?? 0
@@ -381,6 +394,7 @@ struct Idea: Codable, Identifiable {
         try c.encode(contributions, forKey: .contributions)
         try c.encode(attachments, forKey: .attachments)
         try c.encodeIfPresent(finishedAt, forKey: .finishedAt)
+        try c.encodeIfPresent(closesAt, forKey: .closesAt)
         try c.encode(isSensitive, forKey: .isSensitive)
         try c.encodeIfPresent(averageRating, forKey: .averageRating)
         try c.encode(ratingCount, forKey: .ratingCount)

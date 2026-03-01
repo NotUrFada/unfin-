@@ -6,6 +6,9 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
 
 struct ImageFile: Transferable {
     let data: Data
@@ -33,6 +36,7 @@ struct CreateIdeaView: View {
     @State private var content = ""
     @State private var selectedCategoryId: UUID = Category.fictionId
     @State private var showAlert = false
+    @State private var showConfetti = false
     @State private var isPosting = false
     
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
@@ -44,6 +48,33 @@ struct CreateIdeaView: View {
     @State private var newCategoryVerb = "Complete"
     
     @State private var isSensitive = false
+
+    enum TimeLimitOption: String, CaseIterable {
+        case none
+        case hours24
+        case hours48
+        case week
+        var label: String {
+            switch self {
+            case .none: return "No limit"
+            case .hours24: return "24 hours"
+            case .hours48: return "48 hours"
+            case .week: return "1 week"
+            }
+        }
+        var interval: TimeInterval? {
+            switch self {
+            case .none: return nil
+            case .hours24: return 24 * 3600
+            case .hours48: return 48 * 3600
+            case .week: return 7 * 24 * 3600
+            }
+        }
+    }
+    @State private var timeLimitOption: TimeLimitOption = .none
+    
+    @State private var showRestoreDraftAlert = false
+    @State private var hasCheckedDraft = false
     
     @StateObject private var voiceRecorder = VoiceRecorder()
     @State private var recordedVoiceURL: URL?
@@ -56,22 +87,49 @@ struct CreateIdeaView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(white: 0.12).ignoresSafeArea()
-                
+                BackgroundGradientView()
+                    .ignoresSafeArea()
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         categorySection
                         ideaSection
                         sensitiveSection
+                        timeLimitSection
                         hintText
+                        if hasContent {
+                            Button {
+                                saveDraftAndDismiss()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "square.and.arrow.down")
+                                        .font(.system(size: 16, weight: .medium))
+                                    Text("Save draft")
+                                        .font(.system(size: 16, weight: .medium))
+                                }
+                                .foregroundStyle(Color.white.opacity(0.9))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.white.opacity(0.15))
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 8)
+                        }
                     }
-                    .padding(24)
+                    .padding(AppTheme.Spacing.screenHorizontal)
+                    .padding(.bottom, 32)
                 }
+
+                ConfettiView(isActive: showConfetti, duration: 2.5)
+                    .ignoresSafeArea()
             }
             .navigationTitle("New idea")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(white: 0.12), for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .presentationCornerRadius(24)
+            .presentationDragIndicator(.visible)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -84,8 +142,31 @@ struct CreateIdeaView: View {
                         .disabled(!hasContent || isPosting)
                 }
             }
+            .onAppear {
+                if !hasCheckedDraft, let draft = DraftStore.loadIdeaDraft(), !draft.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    showRestoreDraftAlert = true
+                }
+                hasCheckedDraft = true
+            }
+            .alert("Resume draft?", isPresented: $showRestoreDraftAlert) {
+                Button("Start fresh") {
+                    DraftStore.clearIdeaDraft()
+                }
+                Button("Restore") {
+                    if let d = DraftStore.loadIdeaDraft() {
+                        content = d.content
+                        selectedCategoryId = d.categoryId
+                        isSensitive = d.isSensitive
+                    }
+                }
+            } message: {
+                Text("You have a saved draft. Restore it or start a new idea.")
+            }
             .alert("Idea posted", isPresented: $showAlert) {
-                Button("OK") { dismiss() }
+                Button("OK") {
+                    showConfetti = false
+                    dismiss()
+                }
             } message: {
                 Text("Your idea is now in the feed. Others can complete it.")
             }
@@ -339,6 +420,24 @@ struct CreateIdeaView: View {
             .tint(Color.white.opacity(0.9))
         }
     }
+
+    private var timeLimitSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Time limit")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.92))
+            Text("Close this idea to new completions after a set time. People can still read it.")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.white.opacity(0.65))
+            Picker("Time limit", selection: $timeLimitOption) {
+                ForEach(TimeLimitOption.allCases, id: \.self) { opt in
+                    Text(opt.label).tag(opt)
+                }
+            }
+            .pickerStyle(.segmented)
+            .colorScheme(.dark)
+        }
+    }
     
     private var hintText: some View {
         Text("Share a song hook, story start, show concept, or any incomplete idea. Add photos, audio, or documents.")
@@ -362,6 +461,14 @@ struct CreateIdeaView: View {
         }
     }
     
+    private func saveDraftAndDismiss() {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty || recordedVoiceURL != nil {
+            DraftStore.saveIdeaDraft(content: content, categoryId: selectedCategoryId, isSensitive: isSensitive)
+        }
+        dismiss()
+    }
+
     private func attachmentKind(for url: URL) -> AttachmentKind {
         let ext = url.pathExtension.lowercased()
         let audio = ["mp3", "m4a", "wav", "aac", "ogg"]
@@ -375,6 +482,7 @@ struct CreateIdeaView: View {
     private func postIdea() {
         guard hasContent else { return }
         isPosting = true
+        let limitOption = timeLimitOption
         let ideaId = UUID()
         let dir = store.attachmentsDirectory(for: ideaId)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -420,6 +528,7 @@ struct CreateIdeaView: View {
                 }
             }
             let textContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let closesAt: Date? = limitOption.interval.map { Date().addingTimeInterval($0) }
             let idea = Idea(
                 id: ideaId,
                 categoryId: selectedCategoryId,
@@ -429,12 +538,15 @@ struct CreateIdeaView: View {
                 authorId: authorId,
                 authorDisplayName: store.currentUserName,
                 attachments: attachments,
+                closesAt: closesAt,
                 isSensitive: isSensitive
             )
             do {
                 try await store.addIdea(idea)
                 await MainActor.run {
+                    DraftStore.clearIdeaDraft()
                     isPosting = false
+                    showConfetti = true
                     showAlert = true
                 }
             } catch {
@@ -444,6 +556,94 @@ struct CreateIdeaView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Confetti (in-scope for CreateIdeaView)
+private struct ConfettiView: View {
+    var isActive: Bool
+    var duration: TimeInterval = 2.5
+    var particleCount: Int = 70
+
+    @State private var progress: CGFloat = 0
+    @State private var hasStarted = false
+    @State private var particles: [ConfettiParticle] = []
+
+    private static let colors: [Color] = [
+        .white, Color(red: 1, green: 0.4, blue: 0.4), Color(red: 0.4, green: 0.8, blue: 1),
+        Color(red: 0.5, green: 1, blue: 0.5), Color(red: 1, green: 0.85, blue: 0.4),
+        Color(red: 0.9, green: 0.5, blue: 1)
+    ]
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                ForEach(particles) { p in
+                    confettiShape(p, in: geo.size)
+                }
+            }
+            .allowsHitTesting(false)
+        }
+        .onChange(of: isActive) { _, active in
+            if active && !hasStarted { startConfetti() }
+        }
+        .onAppear {
+            if isActive && !hasStarted { startConfetti() }
+        }
+    }
+
+    private func startConfetti() {
+        guard !hasStarted else { return }
+        hasStarted = true
+        #if os(iOS)
+        let size = UIScreen.main.bounds.size
+        #else
+        let size = CGSize(width: 400, height: 600)
+        #endif
+        particles = (0..<particleCount).map { _ in ConfettiParticle(size: size, colors: Self.colors) }
+        withAnimation(.easeOut(duration: duration)) { progress = 1 }
+    }
+
+    private func confettiShape(_ p: ConfettiParticle, in size: CGSize) -> some View {
+        let endY = p.fallDistance * progress
+        let endX = p.driftX * progress
+        let opacity = Double(1 - progress)
+        let rotation = p.rotationStart + progress * p.rotationEnd
+        return Group {
+            if p.isCircle {
+                Circle().fill(p.color).frame(width: p.size, height: p.size)
+            } else {
+                RoundedRectangle(cornerRadius: 2).fill(p.color).frame(width: p.size * 1.4, height: p.size * 0.6)
+            }
+        }
+        .rotationEffect(.degrees(rotation))
+        .position(x: size.width * 0.5 + p.startX + endX, y: size.height * 0.35 + p.startY + endY)
+        .opacity(opacity)
+    }
+}
+
+private struct ConfettiParticle: Identifiable {
+    let id = UUID()
+    let startX: CGFloat
+    let startY: CGFloat
+    let driftX: CGFloat
+    let fallDistance: CGFloat
+    let rotationStart: CGFloat
+    let rotationEnd: CGFloat
+    let color: Color
+    let size: CGFloat
+    let isCircle: Bool
+
+    init(size: CGSize, colors: [Color]) {
+        startX = CGFloat.random(in: -size.width * 0.4...size.width * 0.4)
+        startY = CGFloat.random(in: -30...20)
+        driftX = CGFloat.random(in: -80...80)
+        fallDistance = CGFloat.random(in: 200...400)
+        rotationStart = CGFloat.random(in: 0...360)
+        rotationEnd = CGFloat.random(in: 360...720)
+        color = colors.randomElement() ?? .white
+        self.size = CGFloat.random(in: 6...14)
+        isCircle = Bool.random()
     }
 }
 

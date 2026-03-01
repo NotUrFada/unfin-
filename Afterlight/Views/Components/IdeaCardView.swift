@@ -41,12 +41,21 @@ struct IdeaCardView: View {
                                 .clipShape(Capsule())
                         }
                         if idea.isFinished {
-                            Text("Finished")
+                            Text(idea.isClosedByTimeLimit ? "Closed" : "Finished")
                                 .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.green)
+                                .foregroundStyle(idea.isClosedByTimeLimit ? .orange : .green)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.green.opacity(0.2))
+                                .background((idea.isClosedByTimeLimit ? Color.orange : Color.green).opacity(0.2))
+                                .clipShape(Capsule())
+                        }
+                        if !idea.isFinished, let remaining = idea.timeLimitRemaining, remaining > 0 {
+                            Text(IdeaCardView.formatTimeRemaining(remaining))
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.2))
                                 .clipShape(Capsule())
                         }
                         if !idea.isFinished && idea.completionPercentage > 0 {
@@ -199,6 +208,20 @@ struct IdeaCardView: View {
                     .padding(.leading, 4)
             }
         }
+    }
+
+    private static func formatTimeRemaining(_ seconds: TimeInterval) -> String {
+        let h = Int(seconds) / 3600
+        let m = (Int(seconds) % 3600) / 60
+        if h >= 24 {
+            let d = h / 24
+            let hRest = h % 24
+            if hRest == 0 { return "\(d)d left" }
+            return "\(d)d \(hRest)h left"
+        }
+        if h > 0 { return "\(h)h \(m)m left" }
+        if m > 0 { return "\(m)m left" }
+        return "Closing soon"
     }
 }
 
